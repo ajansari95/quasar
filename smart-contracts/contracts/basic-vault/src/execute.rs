@@ -134,7 +134,12 @@ pub fn get_deposit_and_remainder_for_ratio(
                 max_bond.checked_multiply_ratio(r.weight.numerator(), r.weight.denominator())?;
 
             if expected_amount > amount {
-                return Err(ContractError::IncorrectBondingRatio {});
+                return Err(ContractError::IncorrectBondingRatio {
+                    denoms: ratio.ratio.iter().map(|r| r.denom.clone()).collect(),
+                    expected_amount,
+                    amount,
+                    denom: r.denom.clone(),
+                });
             }
 
             remainder = remainder

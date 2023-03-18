@@ -24,7 +24,7 @@ pub fn try_icq(storage: &mut dyn Storage, env: Env) -> Result<Option<SubMsg>, Co
     check_icq_channel(storage, icq_channel.clone())?;
 
     // deposit need to internally rebuild the amount of funds under the smart contract
-    let packet = prepare_total_balance_query(storage, ICA_CHANNEL.load(storage)?)?;
+    let packet = prepare_full_query(storage, ICA_CHANNEL.load(storage)?)?;
 
     let send_packet_msg = IbcMsg::SendPacket {
         channel_id: icq_channel,
@@ -39,7 +39,7 @@ pub fn try_icq(storage: &mut dyn Storage, env: Env) -> Result<Option<SubMsg>, Co
     )?))
 }
 
-pub fn prepare_total_balance_query(
+pub fn prepare_full_query(
     storage: &dyn Storage,
     channel: String,
 ) -> Result<InterchainQueryPacketData, ContractError> {
@@ -175,7 +175,7 @@ mod tests {
         let pkt = IbcMsg::SendPacket {
             channel_id: ICQ_CHANNEL.load(deps.as_ref().storage).unwrap(),
             data: to_binary(
-                &prepare_total_balance_query(
+                &prepare_full_query(
                     deps.as_ref().storage,
                     ICA_CHANNEL.load(deps.as_ref().storage).unwrap(),
                 )

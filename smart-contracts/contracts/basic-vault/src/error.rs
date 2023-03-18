@@ -19,8 +19,13 @@ pub enum ContractError {
     #[error("Stored bonded {stored}, but query bonded {queried}")]
     BondedMismatch { stored: Uint128, queried: Uint128 },
 
-    #[error("Incorrect bonding ratio")]
-    IncorrectBondingRatio {},
+    #[error("Incorrect bonding ratio, expected to receive denoms: {denoms}, for denom {denom} expected {expected_amount} received {amount}")]
+    IncorrectBondingRatio {
+        denoms: String,
+        expected_amount: Uint128,
+        amount: Uint128,
+        denom: String,
+    },
 
     #[error("No {denom} tokens sent")]
     EmptyBalance { denom: String },
