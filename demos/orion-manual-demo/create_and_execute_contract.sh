@@ -8,7 +8,6 @@ on_error() {
     quasarnoded q wasm contract-state smart $ADDR1 '{"trapped_errors":{}}'
 
     afplay /System/Library/Sounds/Sosumi.aiff
-    afplay /System/Library/Sounds/Sosumi.aiff
 }
 
 trap 'on_error' ERR
@@ -32,7 +31,7 @@ INIT1='{"lock_period":6,"pool_id":1,"pool_denom":"gamm/pool/1","base_denom":"uos
 
 cd ../../smart-contracts
 
-# docker run --rm -v "$(pwd)":/code --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target   --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry cosmwasm/workspace-optimizer-arm64:0.12.11
+docker run --rm -v "$(pwd)":/code --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target --mount type=volume,source=registry_cache,target=/usr/local/cargo/registry cosmwasm/workspace-optimizer-arm64:0.12.11
 
 echo "Running store code"
 RES=$(quasarnoded tx wasm store artifacts/lp_strategy-aarch64.wasm --from alice --keyring-backend test -y --output json -b block $TXFLAG)
@@ -47,7 +46,6 @@ echo "Got address of deployed contract = $ADDR1"
 
 rly transact channel quasar_osmosis --src-port "wasm.$ADDR1" --dst-port icqhost --order unordered --version icq-1 --override
 rly transact channel quasar_osmosis --src-port "wasm.$ADDR1" --dst-port icahost --order ordered --version '{"version":"ics27-1","encoding":"proto3","tx_type":"sdk_multi_msg","controller_connection_id":"connection-0","host_connection_id":"connection-0"}' --override
-
 
 # quasarnoded tx wasm execute $ADDR1 '{"bond":{"id": "my-id"}}' -y --from alice --keyring-backend test --amount 1000ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518 $TXFLAG
 # sleep 6
