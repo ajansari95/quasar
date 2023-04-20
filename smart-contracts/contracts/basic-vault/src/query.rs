@@ -8,8 +8,8 @@ use crate::{
         PendingUnbondsByIdResponse, PendingUnbondsResponse, PrimitiveInfo, TvlInfoResponse,
     },
     state::{
-        InvestmentInfo, Unbond, BOND_STATE, INVESTMENT, PENDING_BOND_IDS, PENDING_UNBOND_IDS,
-        UNBOND_STATE,
+        Cap, InvestmentInfo, Unbond, BOND_STATE, CAP, INVESTMENT, PENDING_BOND_IDS,
+        PENDING_UNBOND_IDS, UNBOND_STATE,
     },
 };
 
@@ -126,4 +126,9 @@ pub fn query_pending_unbonds_by_id(
     Ok(PendingUnbondsByIdResponse {
         pending_unbonds: unbond_stubs,
     })
+}
+
+pub fn query_cap(deps: Deps) -> StdResult<Cap> {
+    let cap = CAP.load(deps.storage)?;
+    Ok(cap)
 }
