@@ -317,6 +317,7 @@ mod test {
                     ],
                     owner: Addr::unchecked("owner".to_string()),
                     min_withdrawal: 1u128.into(),
+                    cap: None,
                 },
             )
             .unwrap();

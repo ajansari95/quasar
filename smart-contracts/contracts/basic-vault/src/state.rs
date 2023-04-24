@@ -29,6 +29,8 @@ pub struct InvestmentInfo {
     pub min_withdrawal: Uint128,
     /// this is the array of primitives that this vault will subscribe to
     pub primitives: Vec<PrimitiveConfig>,
+    /// cap is the total amount of tokens that can be deposited, eg: max uosmo of the contract
+    pub cap: Option<Cap>,
 }
 
 pub const CAP: Item<Cap> = Item::new("cap");
@@ -170,6 +172,7 @@ mod tests {
                 };
                 4
             ],
+            cap: None,
         };
         invest.normalize_primitive_weights();
         assert_eq!(invest.primitives[0].weight, Decimal::percent(25));

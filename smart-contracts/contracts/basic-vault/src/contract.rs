@@ -87,10 +87,12 @@ pub fn instantiate(
         }
     }
 
+    // TODO: total cap should be an option
     let mut invest = InvestmentInfo {
         owner: info.sender.clone(),
         min_withdrawal: msg.min_withdrawal,
         primitives: msg.primitives,
+        cap: Some(Cap::new(info.sender.clone(), msg.total_cap)),
     };
     invest.normalize_primitive_weights();
     INVESTMENT.save(deps.storage, &invest)?;
@@ -565,6 +567,7 @@ mod test {
             owner: Addr::unchecked("lulu"),
             min_withdrawal: Uint128::from(100u128),
             primitives: primitive_configs,
+            cap: None,
         };
 
         INVESTMENT

@@ -50,6 +50,7 @@ pub fn query_investment(deps: Deps) -> StdResult<InvestmentResponse> {
             owner: invest.owner.clone(),
             min_withdrawal: invest.min_withdrawal,
             primitives: invest.primitives,
+            cap: invest.cap,
         },
     };
     Ok(res)
