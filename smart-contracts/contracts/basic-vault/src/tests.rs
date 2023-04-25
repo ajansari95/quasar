@@ -1,16 +1,16 @@
 use core::panic;
-use std::{marker::PhantomData, str::FromStr};
+use std::{marker::PhantomData, str::FromStr, ops::Add};
 
 use cosmwasm_std::{
     coins, from_binary,
     testing::{mock_dependencies, mock_env, mock_info, MockApi, MockStorage},
-    to_binary, Addr, BankMsg, Binary, Coin, ContractInfoResponse, ContractResult, CosmosMsg,
-    Decimal, DepsMut, Empty, Env, Fraction, MessageInfo, OwnedDeps, Querier, QuerierResult,
-    QueryRequest, Reply, Response, StdError, StdResult, SubMsgResponse, SubMsgResult, Timestamp,
-    Uint128, WasmMsg,
+    to_binary, Addr, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Decimal, DepsMut, Empty,
+    Env, Fraction, MessageInfo, OwnedDeps, Querier, QuerierResult, QueryRequest, Reply, Response,
+    StdError, StdResult, SubMsgResponse, SubMsgResult, SystemError, SystemResult, Timestamp,
+    Uint128, WasmMsg, WasmQuery,
 };
 use cw20::BalanceResponse;
-
+use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
 use cw_asset::AssetInfoBase;
 use cw_utils::PaymentError;
 use lp_strategy::{
@@ -23,16 +23,24 @@ use quasar_types::{
     types::{CoinRatio, CoinWeight},
 };
 
+use proptest::prelude::*;
+
 use crate::{
+    callback::on_bond,
     contract::execute,
     contract::instantiate,
     contract::query,
     contract::{reply, REPLY_INIT_VAULT_REWARDS},
     execute::{
-        get_deposit_amount_weights, get_deposit_and_remainder_for_ratio, get_max_bond,
-        get_token_amount_weights, may_pay_with_ratio,
+        do_start_unbond, get_deposit_amount_weights, get_deposit_and_remainder_for_ratio,
+        get_max_bond, get_token_amount_weights, may_pay_with_ratio,
     },
     msg::{ExecuteMsg, InstantiateMsg, InvestmentResponse, PrimitiveConfig, PrimitiveInitMsg},
+    state::{
+        BondingStub, Cap, InvestmentInfo, Supply, BONDING_SEQ, BONDING_SEQ_TO_ADDR, BOND_STATE,
+        CAP, INVESTMENT, TOTAL_SUPPLY, VAULT_REWARDS,
+    },
+    ContractError,
 };
 
 #[derive(Clone, PartialEq, prost::Message)]
@@ -2032,4 +2040,272 @@ fn test_claim_with_funds() {
     let msg = ExecuteMsg::Claim {};
     let res = execute(deps.as_mut(), env, info, msg);
     assert_eq!(res.unwrap_err(), PaymentError::NonPayable {}.into());
+}
+
+// this test tests 2 on_bond callbacks and a start unbond. The amounts returned slightly 'weird'. The main idea is that after the on_bond callbacks,
+// our user owns 10% of the vault. When we then start to unbond, we expect the user to get 10% of the value in each primitive
+proptest! {
+    #[test]
+    fn test_do_start_unbond(bond_amount in 1u128..1000u128) {
+    let mut deps = mock_dependencies();
+    let env = mock_env();
+    let info = mock_info("user", &[Coin::new(1000, "token")]);
+
+    // TODO replace the mocking with a mock instantiate
+    let instantiate_msg_1 = lp_strategy::msg::InstantiateMsg {
+        lock_period: 3600,
+        pool_id: 2,
+        pool_denom: "gamm/pool/2".to_string(),
+        local_denom: "ibc/ED07".to_string(),
+        base_denom: "uosmo".to_string(),
+        quote_denom: "usdc".to_string(),
+        transfer_channel: "channel-0".to_string(),
+        return_source_channel: "channel-1".to_string(),
+        expected_connection: "connection-0".to_string(),
+    };
+
+    let instantiate_msg_2 = lp_strategy::msg::InstantiateMsg {
+        lock_period: 7200,
+        pool_id: 5,
+        pool_denom: "gamm/pool/5".to_string(),
+        local_denom: "ibc/ED09".to_string(),
+        base_denom: "uosmo".to_string(),
+        quote_denom: "uatom".to_string(),
+        transfer_channel: "channel-2".to_string(),
+        return_source_channel: "channel-3".to_string(),
+        expected_connection: "connection-1".to_string(),
+    };
+
+    // set up the contract state
+    let min_withdrawal = Uint128::new(100);
+    let invest = InvestmentInfo {
+        primitives: vec![
+            PrimitiveConfig {
+                address: "contract1".to_string(),
+                weight: Decimal::percent(90),
+                init: PrimitiveInitMsg::LP(instantiate_msg_1),
+            },
+            PrimitiveConfig {
+                address: "contract2".to_string(),
+                weight: Decimal::percent(10),
+                init: PrimitiveInitMsg::LP(instantiate_msg_2),
+            },
+        ],
+        min_withdrawal,
+        owner: Addr::unchecked("bob"),
+    };
+    let bond_seq = Uint128::new(1);
+    let supply = Supply {
+        issued: Uint128::new(4500),
+    };
+    INVESTMENT.save(deps.as_mut().storage, &invest).unwrap();
+    BONDING_SEQ.save(deps.as_mut().storage, &bond_seq).unwrap();
+    TOTAL_SUPPLY.save(deps.as_mut().storage, &supply).unwrap();
+    VAULT_REWARDS
+        .save(deps.as_mut().storage, &Addr::unchecked("rewards-contract"))
+        .unwrap();
+    CAP.save(
+        deps.as_mut().storage,
+        &Cap::new(Addr::unchecked("admin"), Uint128::new(10000)),
+    )
+    .unwrap();
+    // store token info using cw20-base format
+    let token_info = TokenInfo {
+        name: "token".to_string(),
+        symbol: "token".to_string(),
+        decimals: 6,
+        total_supply: Uint128::new(4500),
+        // set self as minter, so we can properly execute mint and burn
+        mint: Some(MinterData {
+            minter: env.contract.address.clone(),
+            cap: None,
+        }),
+    };
+    TOKEN_INFO.save(deps.as_mut().storage, &token_info).unwrap();
+
+    //  update the querier to return underlying shares of the vault, in total our vault has 5000 internal shares
+    //  we expect the vault to unbond 10% of the shares it owns in each primitive, so if contract 1 returns
+    // 4000 shares and contract 2 returns 3000 shares, we should return 400 and 300 respectively
+    deps.querier.update_wasm(|q: &WasmQuery| -> QuerierResult {
+        match q {
+            WasmQuery::Smart {
+                contract_addr,
+                msg: msg,
+            } => {
+                // for now we have a single user, so we don't care about the address
+                if let lp_strategy::msg::QueryMsg::Balance { address: _ } =
+                    from_binary(msg).unwrap()
+                {
+                    if contract_addr == "contract1" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::BalanceResponse {
+                                balance: Uint128::new(4000),
+                            })
+                            .unwrap(),
+                        ))
+                    } else if contract_addr == "contract2" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::BalanceResponse {
+                                balance: Uint128::new(3000),
+                            })
+                            .unwrap(),
+                        ))
+                    } else {
+                        SystemResult::Err(cosmwasm_std::SystemError::NoSuchContract {
+                            addr: contract_addr.clone(),
+                        })
+                    }
+                }
+                // mock our ica balance query, for the ica_balance,
+                else if let lp_strategy::msg::QueryMsg::IcaBalance {} = from_binary(msg).unwrap()
+                {
+                    if contract_addr == "contract1" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::IcaBalanceResponse {
+                                amount: Coin {
+                                    denom: "token".to_string(),
+                                    amount: Uint128::new(4000),
+                                },
+                            })
+                            .unwrap(),
+                        ))
+                    } else if contract_addr == "contract2" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::IcaBalanceResponse {
+                                amount: Coin {
+                                    denom: "token".to_string(),
+                                    amount: Uint128::new(3000),
+                                },
+                            })
+                            .unwrap(),
+                        ))
+                    } else {
+                        SystemResult::Err(cosmwasm_std::SystemError::NoSuchContract {
+                            addr: contract_addr.clone(),
+                        })
+                    }
+                } else if let lp_strategy::msg::QueryMsg::PrimitiveShares {} =
+                    from_binary(msg).unwrap()
+                {
+                    if contract_addr == "contract1" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::PrimitiveSharesResponse {
+                                total: Uint128::new(40000),
+                            })
+                            .unwrap(),
+                        ))
+                    } else if contract_addr == "contract2" {
+                        SystemResult::Ok(ContractResult::Ok(
+                            to_binary(&lp_strategy::msg::PrimitiveSharesResponse {
+                                total: Uint128::new(3000),
+                            })
+                            .unwrap(),
+                        ))
+                    } else {
+                        SystemResult::Err(SystemError::NoSuchContract {
+                            addr: contract_addr.clone(),
+                        })
+                    }
+                } else {
+                    SystemResult::Err(SystemError::Unknown {})
+                }
+            }
+            _ => todo!(),
+        }
+    });
+
+    execute(
+        deps.as_mut(),
+        env.clone(),
+        MessageInfo {
+            sender: Addr::unchecked("user"),
+            funds: vec![Coin {
+                denom: "token".to_string(),
+                amount: Uint128::new(1000),
+            }],
+        },
+        ExecuteMsg::Bond { recipient: None },
+    )
+    .unwrap();
+
+    // we do 2 callbacks, one with 350 shares and 1 wih 150 shares
+    on_bond(
+        deps.as_mut(),
+        env.clone(),
+        MessageInfo {
+            sender: Addr::unchecked("contract1"),
+            funds: vec![],
+        },
+        Uint128::new(350),
+        "1".to_string(),
+    )
+    .unwrap();
+    on_bond(
+        deps.as_mut(),
+        env.clone(),
+        MessageInfo {
+            sender: Addr::unchecked("contract2"),
+            funds: vec![],
+        },
+        Uint128::new(150),
+        "1".to_string(),
+    )
+    .unwrap();
+
+    // start trying withdrawals
+    // our succesful withdrawal should show that it is possible for the vault contract to unbond a different amount than 350 and 150 shares
+
+    // case 1: amount is zero, skip start unbond
+    let amount = None;
+    let res = do_start_unbond(deps.as_mut(), &env, &info, amount).unwrap();
+    assert_eq!(res, None);
+
+    // case 2: amount is less than min_withdrawal, error
+    let amount = Some(Uint128::new(50));
+    let res = do_start_unbond(deps.as_mut(), &env, &info, amount);
+    assert!(res.is_err());
+    assert_eq!(
+        res.unwrap_err(),
+        ContractError::UnbondTooSmall {
+            min_bonded: min_withdrawal
+        }
+    );
+
+    // case 3: amount is valid, execute start unbond on all primitive contracts
+    let amount = Some(Uint128::new(500));
+    let res = do_start_unbond(deps.as_mut(), &env, &info, amount)
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.attributes.len(), 4);
+    assert_eq!(res.messages.len(), 3);
+
+    // check the messages sent to each primitive contract
+    let msg1 = &res.messages[0];
+    let msg2 = &res.messages[1];
+    // Since our callback was 350-150, we'd expect the same unbonds here
+    assert_eq!(
+        msg1.msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: "contract1".to_string(),
+            msg: to_binary(&lp_strategy::msg::ExecuteMsg::StartUnbond {
+                id: bond_seq.add(Uint128::one()).to_string(),
+                share_amount: Uint128::new(400),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        msg2.msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: "contract2".to_string(),
+            msg: to_binary(&lp_strategy::msg::ExecuteMsg::StartUnbond {
+                id: bond_seq.add(Uint128::one()).to_string(),
+                share_amount: Uint128::new(300),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+}
 }
