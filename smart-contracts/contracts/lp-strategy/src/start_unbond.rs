@@ -757,7 +757,6 @@ mod tests {
             total_primitive_shares in 1u128..4*10_u128.pow(28),
             lp_shares in 1u128..4*10_u128.pow(28),
         ) {
-
             let mut deps = mock_dependencies();
 
             SHARES.save(deps.as_mut().storage, Addr::unchecked("other-shares"), &Uint128::new(total_primitive_shares)).unwrap();
