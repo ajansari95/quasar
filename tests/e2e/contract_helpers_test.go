@@ -179,30 +179,57 @@ func (s *WasmdTestSuite) SendTokensToRespectiveAccounts(ctx context.Context) {
 	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.MasterMinter, s.E2EBuilder.OsmosisAccounts.NewOwner, "10000000uosmo")
 	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.Owner, s.E2EBuilder.OsmosisAccounts.Authority, "10000000000000000stake1")
 	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.NewOwner, s.E2EBuilder.OsmosisAccounts.Authority, "10000000000000000usdc")
-	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.MasterMinter, s.E2EBuilder.OsmosisAccounts.Authority, "1000000000000000uosmo")
-
-	//walletAmount := ibc.WalletAmount{
-	//	Address: s.E2EBuilder.OsmosisAccounts.Authority.Address,
-	//	Denom:   "uayy",
-	//	Amount:  1000000000,
-	//}
-	//transfer, err := s.Quasar().SendIBCTransfer(ctx, s.Quasar2OsmosisTransferChan.ChannelId, s.E2EBuilder.QuasarAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
-	//s.Require().NoError(err)
-	//s.Require().NoError(transfer.Validate())
-	//
-	//walletAmount.Denom = "uqsr"
-	//transfer, err = s.Quasar().SendIBCTransfer(ctx, s.Quasar2OsmosisTransferChan.ChannelId, s.E2EBuilder.QuasarAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
-	//s.Require().NoError(err)
-	//s.Require().NoError(transfer.Validate())
+	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.MasterMinter, s.E2EBuilder.OsmosisAccounts.Authority, "90000000000000000uosmo")
 
 	walletAmount := ibc.WalletAmount{
 		Address: s.E2EBuilder.QuasarAccounts.Authority.Address,
 		Denom:   "uosmo",
-		Amount:  1000000000,
+		Amount:  100_000_000_000_000,
 	}
 	transfer, err := s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
 	s.Require().NoError(err)
 	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest1.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest2.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest3.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest4.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest5.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest6.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
+	walletAmount.Address = s.E2EBuilder.QuasarAccounts.BondTest7.Address
+	transfer, err = s.Osmosis().SendIBCTransfer(ctx, s.Osmosis2QuasarTransferChan.ChannelId, s.E2EBuilder.OsmosisAccounts.Authority.KeyName, walletAmount, ibc.TransferOptions{})
+	s.Require().NoError(err)
+	s.Require().NoError(transfer.Validate())
+
 }
 
 // ibcDenomFromChannel returns ibc denom according to the given channel port, id and denom

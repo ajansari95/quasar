@@ -189,9 +189,9 @@ func (s *WasmdTestSuite) TestLockBond() {
 	var testCases []tc
 
 	rand.Seed(time.Now().UnixNano())
-	loweLimit := 999_999
+	loweLimit := 99_999
 	upperLimit := 100_000_000_000
-	max := 100_000_000_000_000_000
+	max := 100_000_000_000_000
 	sum := 0
 	for i := 1; i <= 10000; i++ {
 		j := rand.Intn(upperLimit-loweLimit) + loweLimit

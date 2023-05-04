@@ -190,7 +190,7 @@ replace (
 
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
 
-	//github.com/strangelove-ventures/interchaintest/v4 => ../../../interchaintest
+	github.com/strangelove-ventures/interchaintest/v4 => ../../../interchaintest
 
 	// use informal system fork of tendermint
 	github.com/tendermint/tendermint => github.com/informalsystems/tendermint v0.34.26
