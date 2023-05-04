@@ -3,9 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"testing"
-
+	"fmt"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	connectiontypes "github.com/cosmos/ibc-go/v4/modules/core/03-connection/types"
 	channeltypes "github.com/cosmos/ibc-go/v4/modules/core/04-channel/types"
@@ -13,6 +11,10 @@ import (
 	"github.com/strangelove-ventures/interchaintest/v4/ibc"
 	"github.com/strangelove-ventures/interchaintest/v4/testutil"
 	"github.com/stretchr/testify/suite"
+	"math/rand"
+	"strconv"
+	"testing"
+	"time"
 )
 
 const (
@@ -125,7 +127,7 @@ func (s *WasmdTestSuite) SetupSuite() {
 	// deploy basic_vault contract
 	s.BasicVaultContractAddress = s.deployVault(ctx, s.ContractsDeploymentWallet, basicVaultStrategyContractPath, "basic_vault",
 		map[string]any{
-			"total_cap":                     "200000000000",
+			"total_cap":                     "100000000000000000",
 			"thesis":                        "e2e",
 			"vault_rewards_code_id":         s.RewardsStoreID,
 			"reward_token":                  map[string]any{"native": "uqsr"},
@@ -167,6 +169,151 @@ func (s *WasmdTestSuite) SetupSuite() {
 			},
 		},
 	)
+}
+
+func (s *WasmdTestSuite) TestLockBond() {
+	t := s.T()
+	ctx := context.Background()
+
+	type tc struct {
+		Account                  ibc.Wallet // necessary field
+		BondAmount               sdk.Coins  // necessary in case of bonds
+		UnbondAmount             string     // only in case of Action is "unbond"
+		Action                   string     // necessary to provide action, 3 possibilities "bond", "unbond" or "claim"
+		expectedShares           int64      // only needed in case of "bond"
+		expectedDeviation        float64    // only needed in case of "bond"
+		expectedNumberOfUnbonds  int64      // only needed in case of "unbond"
+		expectedBalanceChange    uint64     // only needed in case of "claim"
+		expectedBalanceDeviation float64    // only needed in case of "claim"
+	}
+	var testCases []tc
+
+	rand.Seed(time.Now().UnixNano())
+	loweLimit := 999_999
+	upperLimit := 100_000_000_000
+	max := 100_000_000_000_000_000
+	sum := 0
+	for i := 1; i <= 10000; i++ {
+		j := rand.Intn(upperLimit-loweLimit) + loweLimit
+		sum += j
+		if sum >= max {
+			break
+		}
+		testCases = append(testCases, tc{
+			Account:    s.E2EBuilder.QuasarAccounts.BondTest,
+			Action:     "bond",
+			BondAmount: sdk.NewCoins(sdk.NewInt64Coin("ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518", int64(j))),
+		})
+	}
+
+	for i, tc := range testCases {
+		switch tc.Action {
+		case "bond":
+			// execute bond transaction
+			t.Logf("doing a bond for %s with amount %s", s.E2EBuilder.QuasarAccounts.BondTest.KeyName, tc.BondAmount.String())
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				tc.Account.KeyName,
+				s.BasicVaultContractAddress,
+				tc.BondAmount,
+				map[string]any{"bond": map[string]any{}},
+				nil,
+			)
+		default:
+			t.Log("yay")
+		}
+		if i%50 == 0 {
+			t.Log("Wait for quasar and osmosis to settle up ICA packet transfer and the ibc transfer")
+			err := testutil.WaitForBlocks(ctx, 5, s.Quasar(), s.Osmosis())
+			s.Require().NoError(err)
+
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				s.ContractsDeploymentWallet.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.Coins{},
+				map[string]any{"clear_cache": map[string]any{}},
+				nil,
+			)
+
+			t.Log("Wait for quasar to clear cache and settle up ICA packet transfer and the ibc transfer")
+			err = testutil.WaitForBlocks(ctx, 15, s.Quasar(), s.Osmosis())
+			s.Require().NoError(err)
+		}
+	}
+
+	type lockRes struct {
+		Data struct {
+			Lock struct {
+				Bond        string `json:"bond"`
+				StartUnbond string `json:"start_unbond"`
+				Unbond      string `json:"unbond"`
+				Recovery    string `json:"recovery"`
+				Migration   string `json:"migration"`
+			} `json:"lock"`
+		} `json:"data"`
+	}
+
+	for i := 1; i < 1000; i++ {
+		var response lockRes
+		res := s.ExecuteContractQuery(
+			ctx,
+			s.Quasar(),
+			s.LpStrategyContractAddress1,
+			map[string]any{"lock": map[string]any{}},
+		)
+
+		err := json.Unmarshal(res, &response)
+		s.Require().NoError(err)
+
+		if response.Data.Lock.Bond == "locked" {
+			fmt.Println(s.LpStrategyContractAddress1, "locked")
+		} else {
+			fmt.Println(s.LpStrategyContractAddress1, "unlocked")
+		}
+
+		res = s.ExecuteContractQuery(
+			ctx,
+			s.Quasar(),
+			s.LpStrategyContractAddress2,
+			map[string]any{"lock": map[string]any{}},
+		)
+
+		err = json.Unmarshal(res, &response)
+		s.Require().NoError(err)
+
+		if response.Data.Lock.Bond == "locked" {
+			fmt.Println(s.LpStrategyContractAddress2, "locked")
+		} else {
+			fmt.Println(s.LpStrategyContractAddress2, "unlocked")
+		}
+
+		res = s.ExecuteContractQuery(
+			ctx,
+			s.Quasar(),
+			s.LpStrategyContractAddress3,
+			map[string]any{"lock": map[string]any{}},
+		)
+
+		err = json.Unmarshal(res, &response)
+		s.Require().NoError(err)
+
+		if response.Data.Lock.Bond == "locked" {
+			fmt.Println(s.LpStrategyContractAddress3, "locked")
+		} else {
+			fmt.Println(s.LpStrategyContractAddress3, "unlocked")
+		}
+
+		//t.Log("Wait for state of the contract to change")
+		err = testutil.WaitForBlocks(ctx, 2, s.Quasar(), s.Osmosis())
+		s.Require().NoError(err)
+
+		fmt.Println("----------------------------")
+	}
+
+	time.Sleep(time.Second * 10000)
 }
 
 // TestLpStrategyContract_SuccessfulDeposit tests the lp strategy contract creating an ICA channel between the contract and osmosis

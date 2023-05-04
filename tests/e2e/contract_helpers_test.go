@@ -165,14 +165,14 @@ func (s *WasmdTestSuite) SendTokensToRespectiveAccounts(ctx context.Context) {
 	//s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.MasterMinter, s.E2EBuilder.QuasarAccounts.Authority, "10000000000000000uqsr")
 
 	// Send uqsr to all the bond test accounts
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest1, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest2, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest3, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest4, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest5, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest6, "10000000uqsr")
-	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest7, "10000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest1, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest2, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest3, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest4, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest5, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest6, "1000000000uqsr")
+	s.SendTokensToOneAddress(ctx, s.Quasar(), s.E2EBuilder.QuasarAccounts.Authority, s.E2EBuilder.QuasarAccounts.BondTest7, "1000000000uqsr")
 
 	// Send stake1 and uosmo and usdc to Osmosis authority account
 	s.SendTokensToOneAddress(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.MasterMinter, s.E2EBuilder.OsmosisAccounts.Owner, "10000000uosmo")

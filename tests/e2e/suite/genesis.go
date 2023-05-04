@@ -344,42 +344,42 @@ func quasarPreGenesis(ctx context.Context, val *cosmos.ChainNode) (Accounts, err
 		{
 			Address: bondTest.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest1.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest2.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest3.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest4.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest5.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest6.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 		{
 			Address: bondTest7.Address,
 			Denom:   "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
-			Amount:  100_000_000_000,
+			Amount:  100_000_000_000_000_000,
 		},
 	}
 
