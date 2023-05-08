@@ -7,7 +7,7 @@ use cosmwasm_std::{
     to_binary, Addr, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Decimal, DepsMut, Empty,
     Env, Fraction, MessageInfo, OwnedDeps, Querier, QuerierResult, QueryRequest, Reply, Response,
     StdError, StdResult, SubMsgResponse, SubMsgResult, SystemError, SystemResult, Timestamp,
-    Uint128, WasmMsg, WasmQuery,
+    Uint128, WasmMsg, WasmQuery, ContractInfoResponse,
 };
 use cw20::BalanceResponse;
 use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
@@ -2059,7 +2059,6 @@ proptest! {
     // against an arbitrary existing amount in the vault, with arbitrary amounts in each primitive
     // after our start unbond, the vault should have unbonded the user's value in primitive shares
     // we calculate this value from the primitives by assuming a 1-1 ratio between tokens and primitive shares
-
     #[test]
     fn test_do_start_unbond(
         bond_amount in 1000u128..u128::MAX,
@@ -2387,8 +2386,8 @@ proptest! {
     );
 
     // case 3: amount is valid, execute start unbond on all primitive contracts
-    let amount = Some(amount1 + amount2);
-    let res = do_start_unbond(deps.as_mut(), &env, &info, amount)
+    let total_share_amount = Some(amount1 + amount2);
+    let res = do_start_unbond(deps.as_mut(), &env, &info, total_share_amount)
         .unwrap()
         .unwrap();
     prop_assert_eq!(res.attributes.len(), 4);
@@ -2400,16 +2399,18 @@ proptest! {
     // Since our callback was was equal to the amount of funds we sent to each primitive
     // how do we know what amount we expect back from our bond
     // the exact formula for the share amount is:
-    // 
+    
+    println!("{:?}", total_share_amount);
+    println!("{:?}", res);
 
-
+    // TODO the share amounts probably need to be adjusted for the share_amount 
     prop_assert_eq!(
         msg1.msg.clone(),
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: "contract1".to_string(),
             msg: to_binary(&lp_strategy::msg::ExecuteMsg::StartUnbond {
                 id: bond_seq.add(Uint128::one()).to_string(),
-                share_amount: amount1,
+                share_amount: amount2,
             })
             .unwrap(),
             funds: vec![],
@@ -2421,7 +2422,7 @@ proptest! {
             contract_addr: "contract2".to_string(),
             msg: to_binary(&lp_strategy::msg::ExecuteMsg::StartUnbond {
                 id: bond_seq.add(Uint128::one()).to_string(),
-                share_amount: amount2,
+                share_amount: amount1,
             })
             .unwrap(),
             funds: vec![],
