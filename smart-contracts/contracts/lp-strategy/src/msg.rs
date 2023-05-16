@@ -6,6 +6,7 @@ use std::{
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Coin, IbcPacketAckMsg, StdResult, Uint128};
 
+pub use cw20::BalanceResponse;
 use quasar_types::ibc::ChannelInfo;
 
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
     ibc_lock,
     start_unbond::StartUnbond,
     state::{Config, LpCache, Unbond},
+    unbond::PendingReturningUnbonds,
 };
 
 #[cw_serde]
@@ -40,15 +42,8 @@ impl InstantiateMsg {
 }
 
 #[cw_serde]
-pub struct RecoverySingleUnbond {
-    pub lp_shares: Uint128,
-    pub id: String,
-}
-
-#[cw_serde]
 pub struct MigrateMsg {
-    pub vault_address: Addr,
-    pub recover_unbonds: Vec<RecoverySingleUnbond>,
+    pub delete_pending: Vec<(u64, String)>,
 }
 
 #[cw_serde]
@@ -59,6 +54,8 @@ pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
     #[returns(IcaAddressResponse)]
+    Balance { address: String },
+    #[returns(BalanceResponse)]
     IcaAddress {},
     #[returns(LockResponse)]
     Lock {},
@@ -84,6 +81,8 @@ pub enum QueryMsg {
     ListPendingAcks {},
     #[returns(ListRepliesResponse)]
     ListReplies {},
+    #[returns(ListClaimableFundsResponse)]
+    ListClaimableFunds {},
     #[returns(OsmoLockResponse)]
     OsmoLock {},
     #[returns(SimulatedJoinResponse)]
@@ -122,6 +121,11 @@ pub struct ListRepliesResponse {
 }
 
 #[cw_serde]
+pub struct ListClaimableFundsResponse {
+    pub claimable_funds: HashMap<String, Uint128>,
+}
+
+#[cw_serde]
 pub struct ListPrimitiveSharesResponse {
     pub shares: HashMap<Addr, Uint128>,
 }
@@ -134,6 +138,7 @@ pub struct ListPendingAcksResponse {
 #[cw_serde]
 pub struct ListUnbondingClaimsResponse {
     pub unbonds: HashMap<Addr, (String, Unbond)>,
+    pub pending_unbonds: HashMap<Addr, (String, Unbond)>,
 }
 
 #[cw_serde]
@@ -242,6 +247,7 @@ pub enum ExecuteMsg {
     // accept a dispatched transfer from osmosis
     AcceptReturningFunds {
         id: u64,
+        pending: PendingReturningUnbonds,
     },
     // try to close a channel where a timout occured
     CloseChannel {

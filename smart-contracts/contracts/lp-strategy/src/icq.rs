@@ -1,6 +1,5 @@
 use cosmwasm_std::{
-    to_binary, Addr, Decimal, Env, Fraction, IbcMsg, IbcTimeout, QuerierWrapper, Storage, SubMsg,
-    Uint128,
+    to_binary, Decimal, Env, Fraction, IbcMsg, IbcTimeout, QuerierWrapper, Storage, SubMsg, Uint128,
 };
 use osmosis_std::types::{
     cosmos::{bank::v1beta1::QueryBalanceRequest, base::v1beta1::Coin as OsmoCoin},
@@ -17,13 +16,10 @@ use quasar_types::icq::{InterchainQueryPacketData, Query};
 
 use crate::{
     error::ContractError,
-    helpers::{
-        check_icq_channel, create_ibc_ack_submsg, get_ica_address, get_usable_bond_balance,
-        IbcMsgKind,
-    },
+    helpers::{check_icq_channel, create_ibc_ack_submsg, get_ica_address, IbcMsgKind},
     state::{
-        Unbond, BOND_QUEUE, CONFIG, IBC_LOCK, ICA_CHANNEL, ICQ_CHANNEL, LP_SHARES, OSMO_LOCK,
-        PENDING_BOND_QUEUE, PENDING_UNBONDING_CLAIMS, SIMULATED_JOIN_AMOUNT_IN, UNBONDING_CLAIMS,
+        BOND_QUEUE, CONFIG, IBC_LOCK, ICA_CHANNEL, ICQ_CHANNEL, LP_SHARES, OSMO_LOCK,
+        PENDING_BOND_QUEUE, PENDING_UNBOND_QUEUE, SIMULATED_JOIN_AMOUNT_IN, UNBOND_QUEUE,
     },
 };
 
@@ -51,32 +47,23 @@ pub fn try_icq(
         let packet = prepare_full_query(storage, env.clone(), pending_bonds_value)?;
 
         let send_packet_msg = IbcMsg::SendPacket {
-            channel_id: icq_channel,
+            channel_id: icq_channel.clone(),
             data: to_binary(&packet)?,
             timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(7200)),
         };
 
-        let mut range: Vec<((Addr, String), Unbond)> = vec![];
-        for pending_unbonding_claim in
-            PENDING_UNBONDING_CLAIMS.range(storage, None, None, cosmwasm_std::Order::Ascending)
-        {
-            range.push(pending_unbonding_claim?);
+        while !PENDING_UNBOND_QUEUE.is_empty(storage)? {
+            let unbond = PENDING_UNBOND_QUEUE.pop_front(storage)?;
+            if let Some(unbond) = unbond {
+                UNBOND_QUEUE.push_back(storage, &unbond)?;
+            }
         }
-
-        for pending_unbonding_claim in range.iter() {
-            let (keys, unbond) = pending_unbonding_claim;
-
-            UNBONDING_CLAIMS.save(storage, keys.clone(), unbond)?;
-            PENDING_UNBONDING_CLAIMS.remove(storage, keys.clone());
-        }
-
-        let channel = ICQ_CHANNEL.load(storage)?;
 
         Ok(Some(create_ibc_ack_submsg(
             storage,
             IbcMsgKind::Icq,
             send_packet_msg,
-            channel,
+            icq_channel,
         )?))
     } else {
         Ok(None)
@@ -106,20 +93,21 @@ pub fn prepare_full_query(
         denom: config.pool_denom.clone(),
     };
     // we simulate the result of a join pool to estimate the slippage we can expect during this deposit
-    // we use the current current balance of local_denom for this query. This is safe because at any point
+    // we use the current balance of local_denom for this query. This is safe because at any point
     // a pending deposit will only use the current balance of the vault. QueryCalcJoinPoolSharesRequest
     // since we're going to be moving the entire pending bond queue to the bond queue in this icq, we  can
     // fold the PENDING_BOND_QUEUE
-    let balance = get_usable_bond_balance(storage, bonding_amount)?;
+    // April 27 2023 - we removed get_usable_bond_balance, but we will have to bring it back when we do error
+    // recovery for deposits
 
     // we save the amount to scale the slippage against in the icq ack for other incoming bonds
-    SIMULATED_JOIN_AMOUNT_IN.save(storage, &balance)?;
+    SIMULATED_JOIN_AMOUNT_IN.save(storage, &bonding_amount)?;
 
     let join_pool = QueryCalcJoinPoolSharesRequest {
         pool_id: config.pool_id,
         tokens_in: vec![OsmoCoin {
             denom: config.base_denom.clone(),
-            amount: balance.to_string(),
+            amount: bonding_amount.to_string(),
         }],
     };
 

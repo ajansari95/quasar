@@ -20,8 +20,7 @@ use crate::{
     ibc_lock::Lock,
     state::{
         LpCache, PendingSingleUnbond, Unbond, CONFIG, IBC_LOCK, IBC_TIMEOUT_TIME, ICA_CHANNEL,
-        LP_SHARES, OSMO_LOCK, PENDING_UNBONDING_CLAIMS, SHARES, START_UNBOND_QUEUE,
-        UNBONDING_CLAIMS,
+        LP_SHARES, OSMO_LOCK, SHARES, START_UNBOND_QUEUE, UNBONDING_CLAIMS,
     },
 };
 
@@ -88,7 +87,7 @@ pub fn batch_start_unbond(
                 .ok_or(ContractError::QueueItemNotFound {
                     queue: "start_unbond".to_string(),
                 })?;
-        let lp_shares = single_unbond(storage, env, &unbond, total_lp_shares.locked_shares)?;
+        let lp_shares = single_unbond(storage, &unbond, total_lp_shares.locked_shares)?;
         to_unbond = to_unbond.checked_add(lp_shares)?;
         unbonds.push(PendingSingleUnbond {
             lp_shares,
@@ -176,7 +175,6 @@ pub fn handle_start_unbond_ack(
 // in single_unbond, we change from using internal primitive to an actual amount of lp-shares that we can unbond
 fn single_unbond(
     storage: &mut dyn Storage,
-    _env: &Env,
     unbond: &StartUnbond,
     total_lp_shares: Uint128,
 ) -> Result<Uint128, ContractError> {
@@ -184,8 +182,7 @@ fn single_unbond(
 
     Ok(unbond
         .primitive_shares
-        .checked_mul(total_lp_shares)?
-        .checked_div(total_primitive_shares)?)
+        .checked_multiply_ratio(total_lp_shares, total_primitive_shares)?)
 }
 
 // unbond starts unbonding an amount of lp shares
@@ -221,7 +218,7 @@ fn start_internal_unbond(
         .plus_seconds(CONFIG.load(storage)?.lock_period);
 
     // add amount of unbonding claims
-    PENDING_UNBONDING_CLAIMS.save(
+    UNBONDING_CLAIMS.save(
         storage,
         (unbond.owner.clone(), unbond.id.clone()),
         &Unbond {
@@ -261,11 +258,13 @@ mod tests {
     };
 
     use crate::{
+        bond::calculate_claim,
         state::{LpCache, PendingSingleUnbond, SHARES},
         test_helpers::default_setup,
     };
 
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn do_start_unbond_exact_works() {
@@ -460,7 +459,6 @@ mod tests {
         let mut deps = mock_dependencies();
         default_setup(deps.as_mut().storage).unwrap();
         let owner = Addr::unchecked("bob");
-        let env = mock_env();
         let id = "my-id".to_string();
 
         SHARES
@@ -487,7 +485,6 @@ mod tests {
 
         let res = single_unbond(
             deps.as_mut().storage,
-            &env,
             &StartUnbond {
                 owner,
                 id,
@@ -510,7 +507,6 @@ mod tests {
         let mut deps = mock_dependencies();
         default_setup(deps.as_mut().storage).unwrap();
         let owner = Addr::unchecked("bob");
-        let env = mock_env();
         let id = "my-id".to_string();
 
         SHARES
@@ -519,7 +515,6 @@ mod tests {
 
         let res = single_unbond(
             deps.as_mut().storage,
-            &env,
             &StartUnbond {
                 owner,
                 id,
@@ -753,5 +748,52 @@ mod tests {
                 kind: "cosmwasm_std::math::uint128::Uint128".to_string()
             })
         )
+    }
+
+    proptest! {
+        #[test]
+        fn test_calculate_claim_and_single_unbond(
+            (total_balance, user_balance) in (1..4*10_u128.pow(28)).prop_flat_map(|a| (Just(a), 1..a)),
+            total_primitive_shares in 1u128..4*10_u128.pow(28),
+            lp_shares in 1u128..4*10_u128.pow(28),
+        ) {
+
+            let mut deps = mock_dependencies();
+
+            SHARES.save(deps.as_mut().storage, Addr::unchecked("other-shares"), &Uint128::new(total_primitive_shares)).unwrap();
+
+            // Calculate the claim using the calculate_claim function
+            // here bob gets a claim to a certain amount of
+            let claim = calculate_claim(
+                Uint128::new(user_balance),
+                Uint128::new(total_balance),
+                Uint128::new(total_primitive_shares),
+            )
+            .unwrap();
+
+            // Calculate the unbond amount using the single_unbond function
+            let unbond = single_unbond(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    primitive_shares: claim,
+                    id: "1".to_string(),
+                    owner: Addr::unchecked("bobberino"),
+                },
+                lp_shares.into(),
+            )
+            .unwrap();
+
+            // how do we now assert, basically we get an expected amount of returning lp shares that
+            // we need to simulate a liquidation for. How do we do that?
+            // in the test setup, we assume that depositing total_balance has let to lp_shares,
+            // so the price of a single lp shares is total_balance/lp_shares
+            let ub = Uint128::new(user_balance);
+            let recv_balance = unbond.multiply_ratio(total_balance, lp_shares);
+            // for our assertion, since we are working with interger math and 6 decimals or more on tokens
+            // we're ok with being either 1 off or some micro (10^-10) off
+            // TODO for ease of coding, we just accept this ratio
+            let vals = recv_balance.multiply_ratio(9999999999u128, 10000000000u128)..recv_balance.multiply_ratio(10000000001u128, 1000000000u128);
+            prop_assert!(vals.contains(&ub), "recv_balance: {recv_balance}, user_balance: {user_balance}");
+        }
     }
 }

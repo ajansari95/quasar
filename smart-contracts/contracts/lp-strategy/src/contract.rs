@@ -1,32 +1,30 @@
-use cosmwasm_schema::{cw_serde, QueryResponses};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, Coin, DepsMut, Env, IbcMsg, IbcPacketAckMsg, MessageInfo, Reply, Response,
-    Timestamp, Uint128,
+    from_binary, Attribute, DepsMut, Env, IbcMsg, IbcPacketAckMsg, MessageInfo, QuerierWrapper,
+    Reply, Response, Storage, Uint128,
 };
 use cw2::set_contract_version;
 use cw_utils::{must_pay, nonpayable};
-use quasar_types::callback::UnbondResponse;
+
 use quasar_types::ibc::IcsAck;
 
 use crate::admin::check_depositor;
 use crate::bond::do_bond;
 use crate::error::ContractError;
-use crate::helpers::{is_contract_admin, SubMsgKind};
+use crate::helpers::{create_callback_submsg, is_contract_admin, lock_try_icq, SubMsgKind};
 use crate::ibc::{handle_failing_ack, handle_succesful_ack, on_packet_timeout};
-use crate::ibc_lock::{IbcLock, Lock};
+use crate::ibc_lock::Lock;
 use crate::ibc_util::{do_ibc_join_pool_swap_extern_amount_in, do_transfer};
 use crate::icq::try_icq;
 use crate::msg::{ExecuteMsg, InstantiateMsg, LockOnly, MigrateMsg, UnlockOnly};
 use crate::reply::{handle_ack_reply, handle_callback_reply, handle_ibc_reply};
 use crate::start_unbond::{do_start_unbond, StartUnbond};
 use crate::state::{
-    Config, LpCache, OngoingDeposit, RawAmount, Unbond, ADMIN, BOND_QUEUE, CONFIG, DEPOSITOR,
-    IBC_LOCK, ICA_CHANNEL, LP_SHARES, OSMO_LOCK, PENDING_UNBONDING_CLAIMS, REPLIES, RETURNING,
-    START_UNBOND_QUEUE, TIMED_OUT, TOTAL_VAULT_BALANCE, UNBOND_QUEUE,
+    Config, LpCache, OngoingDeposit, RawAmount, ADMIN, CONFIG, DEPOSITOR, IBC_LOCK, ICA_CHANNEL,
+    LP_SHARES, OSMO_LOCK, PENDING_ACK, REPLIES, RETURNING, TIMED_OUT, TOTAL_VAULT_BALANCE,
 };
-use crate::unbond::do_unbond;
+use crate::unbond::{do_unbond, finish_unbond, PendingReturningUnbonds};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:lp-strategy";
@@ -106,8 +104,8 @@ pub fn execute(
             execute_start_unbond(deps, env, info, id, share_amount)
         }
         ExecuteMsg::Unbond { id } => execute_unbond(deps, env, info, id),
-        ExecuteMsg::AcceptReturningFunds { id } => {
-            execute_accept_returning_funds(deps, &env, info, id)
+        ExecuteMsg::AcceptReturningFunds { id, pending } => {
+            execute_accept_returning_funds(deps.storage, deps.querier, info, id, pending)
         }
         ExecuteMsg::CloseChannel { channel_id } => execute_close_channel(deps, channel_id),
         ExecuteMsg::Ack { ack } => execute_ack(deps, env, info, ack),
@@ -203,30 +201,9 @@ pub fn execute_set_depositor(
 
 pub fn execute_try_icq(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
     // if we're unlocked, we can empty the queues and send the submessages
-    let mut lock = IBC_LOCK.load(deps.storage)?;
-    let sub_msg = try_icq(deps.storage, deps.querier, env)?;
-    let mut res = Response::new();
-
-    if let Some(sub_msg) = sub_msg {
-        if !BOND_QUEUE.is_empty(deps.storage)? {
-            lock.bond = IbcLock::Locked;
-            res = res.add_attribute("bond_queue", "locked");
-        } else if !START_UNBOND_QUEUE.is_empty(deps.storage)? {
-            lock = lock.lock_start_unbond();
-            res = res.add_attribute("start_unbond_queue", "locked");
-        } else if !UNBOND_QUEUE.is_empty(deps.storage)? {
-            lock = lock.lock_unbond();
-            res = res.add_attribute("unbond_queue", "locked");
-        }
-        if lock.is_unlocked() {
-            res = res.add_attribute("IBC_LOCK", "unlocked");
-        }
-        IBC_LOCK.save(deps.storage, &lock)?;
-        res = res.add_submessage(sub_msg);
-    } else {
-        res = res.add_attribute("IBC_LOCK", "locked");
-    }
-    Ok(res)
+    let msg = try_icq(deps.storage, deps.querier, env)?;
+    let res = lock_try_icq(deps, msg)?;
+    Ok(res.add_attribute("action", "try_icq"))
 }
 
 pub fn execute_ack(
@@ -249,23 +226,37 @@ pub fn execute_ack(
 }
 
 pub fn execute_accept_returning_funds(
-    deps: DepsMut,
-    _env: &Env,
+    storage: &mut dyn Storage,
+    querier: QuerierWrapper,
     info: MessageInfo,
     id: u64,
+    pending: PendingReturningUnbonds,
 ) -> Result<Response, ContractError> {
     let returning_amount = RETURNING
-        .may_load(deps.storage, id)?
+        .may_load(storage, id)?
         .ok_or(ContractError::ReturningTransferNotFound)?;
 
-    let amount = must_pay(&info, CONFIG.load(deps.storage)?.local_denom.as_str())?;
+    let amount = must_pay(&info, CONFIG.load(storage)?.local_denom.as_str())?;
     if amount != returning_amount {
         return Err(ContractError::ReturningTransferIncorrectAmount);
     }
 
+    let mut callback_submsgs = vec![];
+    for unbond in pending.unbonds.iter() {
+        let cosmos_msg = finish_unbond(storage, querier, unbond)?;
+        callback_submsgs.push(create_callback_submsg(
+            storage,
+            cosmos_msg,
+            unbond.owner.clone(),
+            unbond.id.clone(),
+        )?)
+    }
+
     Ok(Response::new()
+        .add_attribute("callback-submsgs", callback_submsgs.len().to_string())
         .add_attribute("returning-transfer", id.to_string())
-        .add_attribute("success", "true"))
+        .add_attribute("success", "true")
+        .add_submessages(callback_submsgs))
 }
 
 pub fn execute_bond(
@@ -278,23 +269,25 @@ pub fn execute_bond(
         return Err(ContractError::Unauthorized);
     }
 
-    let msg = do_bond(deps.storage, deps.querier, env, info.clone(), id)?;
+    let amount = must_pay(&info, &CONFIG.load(deps.storage)?.local_denom)?;
 
-    // if msg is some, we are dispatching an icq
-    match msg {
-        Some(submsg) => {
-            IBC_LOCK.update(deps.storage, |lock| -> Result<Lock, ContractError> {
-                Ok(lock.lock_bond())
-            })?;
-            Ok(Response::new()
-                .add_submessage(submsg)
-                .add_attribute("deposit", info.sender)
-                .add_attribute("kind", "dispatch"))
-        }
-        None => Ok(Response::new()
-            .add_attribute("deposit", info.sender)
-            .add_attribute("kind", "queue")),
-    }
+    let msg = do_bond(
+        deps.storage,
+        deps.querier,
+        env,
+        amount,
+        info.sender.clone(),
+        id,
+    )?;
+
+    let attributes = vec![
+        Attribute::new("action", "bond"),
+        Attribute::new("sender", info.sender),
+        Attribute::new("token_amount", amount),
+    ];
+
+    let res = lock_try_icq(deps, msg)?;
+    Ok(res.add_attributes(attributes))
 }
 
 pub fn execute_start_unbond(
@@ -314,27 +307,21 @@ pub fn execute_start_unbond(
         deps.storage,
         StartUnbond {
             owner: info.sender.clone(),
-            id,
+            id: id.clone(),
             primitive_shares: share_amount,
         },
     )?;
 
     let msg = try_icq(deps.storage, deps.querier, env)?;
+    let attributes = vec![
+        Attribute::new("action", "start-unbond"),
+        Attribute::new("sender", info.sender),
+        Attribute::new("prim_share_amount", share_amount),
+        Attribute::new("unbond_id", id),
+    ];
 
-    match msg {
-        Some(submsg) => {
-            IBC_LOCK.update(deps.storage, |lock| -> Result<Lock, ContractError> {
-                Ok(lock.lock_start_unbond())
-            })?;
-            Ok(Response::new()
-                .add_submessage(submsg)
-                .add_attribute("start-unbond", info.sender)
-                .add_attribute("kind", "dispatch"))
-        }
-        None => Ok(Response::new()
-            .add_attribute("start-unbond", info.sender)
-            .add_attribute("kind", "queue")),
-    }
+    let res = lock_try_icq(deps, msg)?;
+    Ok(res.add_attributes(attributes))
 }
 
 pub fn execute_unbond(
@@ -349,24 +336,18 @@ pub fn execute_unbond(
         return Err(ContractError::Unauthorized);
     }
 
-    do_unbond(deps.storage, &env, info.sender.clone(), id)?;
+    do_unbond(deps.storage, &env, info.sender.clone(), id.clone())?;
 
     let msg = try_icq(deps.storage, deps.querier, env)?;
 
-    match msg {
-        Some(submsg) => {
-            IBC_LOCK.update(deps.storage, |lock| -> Result<Lock, ContractError> {
-                Ok(lock.lock_unbond())
-            })?;
-            Ok(Response::new()
-                .add_submessage(submsg)
-                .add_attribute("unbond", info.sender)
-                .add_attribute("kind", "dispatch"))
-        }
-        None => Ok(Response::new()
-            .add_attribute("unbond", info.sender)
-            .add_attribute("kind", "queue")),
-    }
+    let attributes = vec![
+        Attribute::new("action", "unbond"),
+        Attribute::new("sender", info.sender),
+        Attribute::new("unbond_id", id),
+    ];
+
+    let res = lock_try_icq(deps, msg)?;
+    Ok(res.add_attributes(attributes))
 }
 
 // transfer funds sent to the contract to an address on osmosis, this call ignores the lock system
@@ -439,117 +420,16 @@ pub fn execute_close_channel(deps: DepsMut, channel_id: String) -> Result<Respon
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut, env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    #[cw_serde]
-    #[derive(QueryResponses)]
-    pub enum QueryMsg {
-        /// Get all unbonding claims for an id
-        #[returns(PendingUnbondsByIdResponse)]
-        PendingUnbondsById { bond_id: String },
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
+    // remove old pending acks
+    for key in msg.delete_pending.clone() {
+        PENDING_ACK.remove(deps.storage, key)
     }
-
-    #[cw_serde]
-    pub struct PendingUnbondsByIdResponse {
-        /// the unbonds that are currently in the process of being withdrawn by an user
-        pub pending_unbonds: VaultUnbond,
-    }
-
-    #[cw_serde]
-    #[derive(Default)]
-    pub struct VaultUnbond {
-        pub stub: Vec<UnbondingStub>,
-        pub shares: Uint128,
-    }
-
-    #[cw_serde]
-    #[derive(Default)]
-    pub struct UnbondingStub {
-        // the contract address of the primitive
-        pub address: String,
-        // the response of the primitive upon successful bond or error
-        pub unlock_time: Option<Timestamp>,
-        // response of the unbond, if this is present then we have finished unbonding
-        pub unbond_response: Option<UnbondResponse>,
-        // funds attached to the unbond_response
-        pub unbond_funds: Vec<Coin>,
-    }
-
-    for single_unbond in msg.recover_unbonds.iter() {
-        let vault_pending_unbond: PendingUnbondsByIdResponse = deps.querier.query_wasm_smart(
-            msg.vault_address.clone(),
-            &QueryMsg::PendingUnbondsById {
-                bond_id: single_unbond.id.clone(),
-            },
-        )?;
-
-        PENDING_UNBONDING_CLAIMS.save(
-            deps.storage,
-            // todo: double check vault_address should be owner, also check that id is bond_id
-            (msg.vault_address.clone(), single_unbond.id.to_string()),
-            &Unbond {
-                lp_shares: single_unbond.lp_shares,
-                unlock_time: vault_pending_unbond
-                    .pending_unbonds
-                    .stub
-                    .iter()
-                    .find(|p| p.address == env.contract.address)
-                    .unwrap()
-                    .unlock_time
-                    .unwrap(), // this will fail if we have any unbonds (not start unbonds) that were started but never got a response back
-                attempted: false,
-                // todo: same as above todo, who is owner?
-                owner: msg.vault_address.clone(),
-                id: single_unbond.id.clone(),
-            },
-        )?;
-    }
-    // let mut range = vec![];
-    // for pending_ack in PENDING_ACK.range(deps.storage, None, None, cosmwasm_std::Order::Ascending) {
-    //     range.push(pending_ack?);
-    // }
-
-    // for item in range.iter() {
-    //     let (_key, ibc_msg_kind) = item;
-
-    //     if let IbcMsgKind::Ica(IcaMessages::BeginUnlocking(single_unbonds, _total_amount)) =
-    //         ibc_msg_kind
-    //     {
-    //         for single_unbond in single_unbonds {
-    //             let vault_pending_unbond: PendingUnbondsByIdResponse =
-    //                 deps.querier.query_wasm_smart(
-    //                     msg.vault_address.clone(),
-    //                     &QueryMsg::PendingUnbondsById {
-    //                         bond_id: single_unbond.id.clone(),
-    //                     },
-    //                 )?;
-
-    //             PENDING_UNBONDING_CLAIMS.save(
-    //                 deps.storage,
-    //                 // todo: double check vault_address should be owner, also check that id is bond_id
-    //                 (msg.vault_address.clone(), single_unbond.id.to_string()),
-    //                 &Unbond {
-    //                     lp_shares: single_unbond.lp_shares,
-    //                     unlock_time: vault_pending_unbond
-    //                         .pending_unbonds
-    //                         .stub
-    //                         .iter()
-    //                         .find(|p| p.address == env.contract.address)
-    //                         .unwrap()
-    //                         .unlock_time
-    //                         .unwrap(), // this will fail if we have any unbonds (not start unbonds) that were started but never got a response back
-    //                     attempted: false,
-    //                     // todo: same as above todo, who is owner?
-    //                     owner: single_unbond.owner.clone(),
-    //                     id: single_unbond.id.clone(),
-    //                 },
-    //             )?;
-    //         }
-    //     }
-    // }
 
     Ok(Response::new()
         .add_attribute("migrate", CONTRACT_NAME)
-        .add_attribute("success", "true"))
+        .add_attribute("success", "true")
+        .add_attribute("removed", msg.delete_pending.len().to_string()))
 }
 
 #[cfg(test)]
@@ -561,9 +441,68 @@ mod tests {
     };
     use cw_utils::PaymentError;
 
-    use crate::{bond::Bond, state::Unbond, test_helpers::default_setup};
+    use crate::{
+        bond::Bond,
+        state::{
+            Unbond, BOND_QUEUE, PENDING_BOND_QUEUE, PENDING_UNBOND_QUEUE, SHARES,
+            START_UNBOND_QUEUE, UNBONDING_CLAIMS, UNBOND_QUEUE,
+        },
+        test_helpers::default_setup,
+    };
 
     use super::*;
+
+    #[test]
+    fn migrate_msg_works() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        let entries = vec![
+            (
+                (1, "channel-1".to_string()),
+                crate::helpers::IbcMsgKind::Ica(crate::helpers::IcaMessages::ExitPool(
+                    PendingReturningUnbonds { unbonds: vec![] },
+                )),
+            ),
+            (
+                (2, "channel-1".to_string()),
+                crate::helpers::IbcMsgKind::Ica(crate::helpers::IcaMessages::ExitPool(
+                    PendingReturningUnbonds { unbonds: vec![] },
+                )),
+            ),
+            (
+                (1, "channel-3".to_string()),
+                crate::helpers::IbcMsgKind::Ica(crate::helpers::IcaMessages::ExitPool(
+                    PendingReturningUnbonds { unbonds: vec![] },
+                )),
+            ),
+            (
+                (1, "channel-1".to_string()),
+                crate::helpers::IbcMsgKind::Icq,
+            ),
+            (
+                (1, "channel-2".to_string()),
+                crate::helpers::IbcMsgKind::Icq,
+            ),
+            (
+                (1, "channel-4".to_string()),
+                crate::helpers::IbcMsgKind::Icq,
+            ),
+        ];
+
+        for (key, value) in entries.clone() {
+            PENDING_ACK
+                .save(deps.as_mut().storage, key, &value)
+                .unwrap();
+        }
+
+        let msg = MigrateMsg {
+            delete_pending: entries.iter().map(|(key, _)| key.clone()).collect(),
+        };
+
+        migrate(deps.as_mut(), env, msg).unwrap();
+        assert!(PENDING_ACK.is_empty(deps.as_ref().storage))
+    }
 
     #[test]
     fn test_execute_try_icq_ibc_locked() {
@@ -756,5 +695,710 @@ mod tests {
 
         let res = execute(deps.as_mut(), env, info, msg);
         assert_eq!(res.unwrap_err(), PaymentError::NonPayable {}.into());
+    }
+
+    #[test]
+    fn test_execute_try_icq_locked() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up locked IBC state
+        IBC_LOCK
+            .save(deps.as_mut().storage, &Lock::new().lock_bond())
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("IBC_LOCK", "locked"),
+                ("kind", "queue"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is locked"
+        );
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_empty_queues() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Empty bond, start_unbond, and unbond queues, so we insert nothing
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("IBC_LOCK", "unlocked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and queues are empty"
+        );
+    }
+
+    #[test]
+    fn test_execute__start_unbond_with_bond_queue() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+        DEPOSITOR
+            .save(deps.as_mut().storage, &Addr::unchecked("vault-bob"))
+            .unwrap();
+
+        let info = MessageInfo {
+            sender: Addr::unchecked("vault-bob"),
+            funds: vec![],
+        };
+        let id = "4".to_string();
+
+        SHARES
+            .save(
+                deps.as_mut().storage,
+                Addr::unchecked("vault-bob"),
+                &Uint128::new(10000),
+            )
+            .unwrap();
+
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("alice"),
+                    bond_id: "2".to_string(),
+                },
+            )
+            .unwrap();
+
+        let _ = execute_start_unbond(
+            deps.as_mut(),
+            env.clone(),
+            info.clone(),
+            id.clone(),
+            Uint128::new(1000),
+        )
+        .unwrap();
+        assert_eq!(
+            IBC_LOCK.load(deps.as_ref().storage).unwrap(),
+            Lock::new().lock_bond()
+        )
+    }
+
+    #[test]
+    fn test_execute_bond_and_execute_try_icq_filled_queues() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+        DEPOSITOR
+            .save(deps.as_mut().storage, &Addr::unchecked("vault-bob"))
+            .unwrap();
+
+        let info = MessageInfo {
+            sender: Addr::unchecked("vault-bob"),
+            funds: coins(1000, "ibc/local_osmo"),
+        };
+        let id = "4".to_string();
+
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("vault-bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "3".to_string(),
+                },
+            )
+            .unwrap();
+        PENDING_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "5".to_string(),
+                },
+            )
+            .unwrap();
+
+        // Call execute_bond
+        let bond_res = execute_bond(deps.as_mut(), env.clone(), info.clone(), id.clone()).unwrap();
+
+        // Verify that the bond operation was queued
+        assert_eq!(
+            bond_res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "bond"),
+                ("sender", "vault-bob"),
+                ("token_amount", "1000")
+            ],
+            "Unexpected attributes when executing bond"
+        );
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_bond()
+        );
+
+        // Call execute_try_icq
+        let try_icq_res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+
+        // Verify that the bond queue is locked
+        assert_eq!(
+            try_icq_res.attributes,
+            vec![
+                ("IBC_LOCK", "locked"),
+                ("kind", "queue"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when executing try_icq"
+        );
+        assert_eq!(try_icq_res.messages.len(), 0)
+    }
+
+    #[test]
+    fn test_execute_try_icq_filled_queues() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+        DEPOSITOR
+            .save(deps.as_mut().storage, &Addr::unchecked("vault-bob"))
+            .unwrap();
+
+        let info = MessageInfo {
+            sender: Addr::unchecked("vault-bob"),
+            funds: coins(1000, "ibc/local_osmo"),
+        };
+        let id = "4".to_string();
+
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("vault-bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "3".to_string(),
+                },
+            )
+            .unwrap();
+        PENDING_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "5".to_string(),
+                },
+            )
+            .unwrap();
+
+        // Call execute_try_icq
+        let try_icq_res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+
+        // Verify that the bond queue was locked
+        assert_eq!(
+            try_icq_res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when executing try_icq"
+        );
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_bond()
+        );
+
+        assert_eq!(try_icq_res.messages.len(), 1);
+
+        // Call execute_bond
+        let bond_res = execute_bond(deps.as_mut(), env.clone(), info.clone(), id.clone()).unwrap();
+
+        // Verify that the bond operation was queued
+        assert_eq!(
+            bond_res.attributes,
+            vec![
+                ("IBC_LOCK", "locked"),
+                ("kind", "queue"),
+                ("action", "bond"),
+                ("sender", "vault-bob"),
+                ("token_amount", "1000")
+            ],
+            "Unexpected attributes when executing bond"
+        );
+    }
+
+    #[test]
+    fn test_execute_unbond_and_execute_try_icq_filled_queues() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+        DEPOSITOR
+            .save(deps.as_mut().storage, &Addr::unchecked("vault-bob"))
+            .unwrap();
+
+        let info = MessageInfo {
+            sender: Addr::unchecked("vault-bob"),
+            funds: vec![],
+        };
+        let id = "4".to_string();
+
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("vault-bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+        PENDING_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "5".to_string(),
+                },
+            )
+            .unwrap();
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "3".to_string(),
+                },
+            )
+            .unwrap();
+        PENDING_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "5".to_string(),
+                },
+            )
+            .unwrap();
+
+        UNBONDING_CLAIMS
+            .save(
+                deps.as_mut().storage,
+                (Addr::unchecked("vault-bob"), "4".to_string()),
+                &Unbond {
+                    lp_shares: Uint128::new(10000),
+                    unlock_time: Timestamp::from_seconds(1000),
+                    attempted: false,
+                    owner: Addr::unchecked("vault-bob"),
+                    id: "4".to_string(),
+                },
+            )
+            .unwrap();
+
+        // Call execute_try_icq
+        let try_icq_res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_bond()
+        );
+
+        // Verify that the bond queue was locked
+        assert_eq!(
+            try_icq_res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when executing try_icq"
+        );
+        assert_eq!(try_icq_res.messages.len(), 1);
+
+        // Call execute_unbond
+        let unbond_res =
+            execute_unbond(deps.as_mut(), env.clone(), info.clone(), id.clone()).unwrap();
+
+        // Verify that the unbond operation was queued
+        assert_eq!(
+            unbond_res.attributes,
+            vec![
+                ("IBC_LOCK", "locked"),
+                ("kind", "queue"),
+                ("action", "unbond"),
+                ("sender", "vault-bob"),
+                ("unbond_id", "4")
+            ],
+            "Unexpected attributes when executing unbond"
+        )
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_pending_bond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the pending bond queue
+        PENDING_BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and bond queue is not empty"
+        );
+        assert_eq!(res.messages.len(), 1)
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_start_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the bond queue
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("start_unbond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and start_unbond queue is not empty"
+        );
+        assert_eq!(res.messages.len(), 1)
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_pending_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the pending bond queue
+        PENDING_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    lp_shares: Uint128::new(1000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("unbond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and start_unbond queue is not empty"
+        );
+        assert_eq!(res.messages.len(), 1)
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the unbond queue
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    lp_shares: Uint128::new(1000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("unbond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and start_unbond queue is not empty"
+        );
+        assert_eq!(res.messages.len(), 1)
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_bond_start_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the bond queue
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and bond queue is not empty"
+        );
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_bond()
+        )
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_bond_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the bond queue and unbond queue
+        BOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Bond {
+                    amount: Uint128::new(1000),
+                    owner: Addr::unchecked("bob"),
+                    bond_id: "1".to_string(),
+                },
+            )
+            .unwrap();
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    lp_shares: Uint128::new(1000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("bond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and bond queue is not empty"
+        );
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_bond()
+        )
+    }
+
+    #[test]
+    fn test_execute_try_icq_unlocked_start_unbond_unbond_queue_not_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // Set up unlocked IBC state
+        IBC_LOCK.save(deps.as_mut().storage, &Lock::new()).unwrap();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        // Add an item to the start unbond queue and unbond queue
+        START_UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &StartUnbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    primitive_shares: Uint128::new(1000),
+                },
+            )
+            .unwrap();
+        UNBOND_QUEUE
+            .push_back(
+                deps.as_mut().storage,
+                &Unbond {
+                    owner: Addr::unchecked("alice"),
+                    id: "2".to_string(),
+                    lp_shares: Uint128::new(1000),
+                    unlock_time: Timestamp::from_seconds(100),
+                    attempted: false,
+                },
+            )
+            .unwrap();
+
+        let res = execute_try_icq(deps.as_mut(), env.clone()).unwrap();
+        assert_eq!(
+            res.attributes,
+            vec![
+                ("start_unbond_queue", "locked"),
+                ("kind", "dispatch"),
+                ("action", "try_icq")
+            ],
+            "Unexpected attributes when IBC is unlocked and bond queue is not empty"
+        );
+        assert_eq!(
+            IBC_LOCK.load(deps.as_mut().storage).unwrap(),
+            Lock::new().lock_start_unbond()
+        )
     }
 }
