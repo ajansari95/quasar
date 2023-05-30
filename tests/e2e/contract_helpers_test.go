@@ -2,9 +2,12 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	testsuite "github.com/quasarlabs/quasarnode/tests/e2e/suite"
+	"github.com/strangelove-ventures/interchaintest/v4/testutil"
 	"os"
+	"strconv"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	transfertypes "github.com/cosmos/ibc-go/v4/modules/apps/transfer/types"
@@ -243,4 +246,95 @@ func ibcDenomFromChannel(ch *channeltypes.IdentifiedChannel, baseDenom string) s
 // the ibc denom of denom2 from chain2 (counterparty chain) in chain1
 func ibcDenomFromChannelCounterparty(ch *channeltypes.IdentifiedChannel, baseDenom string) string {
 	return transfertypes.ParseDenomTrace(transfertypes.GetPrefixedDenom(ch.Counterparty.PortId, ch.Counterparty.ChannelId, baseDenom)).IBCDenom()
+}
+
+func (s *WasmdTestSuite) GetAccountBalanceInVault(ctx context.Context, address string) int64 {
+	var data testsuite.ContractBalanceData
+	balanceBytes := s.ExecuteContractQuery(
+		ctx,
+		s.Quasar(),
+		s.BasicVaultContractAddress,
+		map[string]any{
+			"balance": map[string]any{
+				"address": address,
+			},
+		},
+	)
+
+	err := json.Unmarshal(balanceBytes, &data)
+	s.Require().NoError(err)
+
+	balance, err := strconv.ParseInt(data.Data.Balance, 10, 64)
+	s.Require().NoError(err)
+
+	return balance
+}
+
+type lockRes struct {
+	Data struct {
+		Lock struct {
+			Bond        string `json:"bond"`
+			StartUnbond string `json:"start_unbond"`
+			Unbond      string `json:"unbond"`
+			Recovery    string `json:"recovery"`
+			Migration   string `json:"migration"`
+		} `json:"lock"`
+	} `json:"data"`
+}
+
+func (s *WasmdTestSuite) GetStates(ctx context.Context) {
+	var response lockRes
+	res := s.ExecuteContractQuery(
+		ctx,
+		s.Quasar(),
+		s.LpStrategyContractAddress1,
+		map[string]any{"lock": map[string]any{}},
+	)
+
+	err := json.Unmarshal(res, &response)
+	s.Require().NoError(err)
+
+	if response.Data.Lock.Bond == "locked" {
+		fmt.Println(s.LpStrategyContractAddress1, "locked")
+	} else {
+		fmt.Println(s.LpStrategyContractAddress1, "unlocked")
+	}
+
+	res = s.ExecuteContractQuery(
+		ctx,
+		s.Quasar(),
+		s.LpStrategyContractAddress2,
+		map[string]any{"lock": map[string]any{}},
+	)
+
+	err = json.Unmarshal(res, &response)
+	s.Require().NoError(err)
+
+	if response.Data.Lock.Bond == "locked" {
+		fmt.Println(s.LpStrategyContractAddress2, "locked")
+	} else {
+		fmt.Println(s.LpStrategyContractAddress2, "unlocked")
+	}
+
+	res = s.ExecuteContractQuery(
+		ctx,
+		s.Quasar(),
+		s.LpStrategyContractAddress3,
+		map[string]any{"lock": map[string]any{}},
+	)
+
+	err = json.Unmarshal(res, &response)
+	s.Require().NoError(err)
+
+	if response.Data.Lock.Bond == "locked" {
+		fmt.Println(s.LpStrategyContractAddress3, "locked")
+	} else {
+		fmt.Println(s.LpStrategyContractAddress3, "unlocked")
+	}
+
+	//t.Log("Wait for state of the contract to change")
+	err = testutil.WaitForBlocks(ctx, 2, s.Quasar(), s.Osmosis())
+	s.Require().NoError(err)
+
+	fmt.Println("----------------------------")
 }

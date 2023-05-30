@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	connectiontypes "github.com/cosmos/ibc-go/v4/modules/core/03-connection/types"
 	channeltypes "github.com/cosmos/ibc-go/v4/modules/core/04-channel/types"
@@ -204,6 +203,21 @@ func (s *WasmdTestSuite) TestLockBond() {
 			Action:     "bond",
 			BondAmount: sdk.NewCoins(sdk.NewInt64Coin("ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518", int64(j))),
 		})
+		testCases = append(testCases, tc{
+			Account:    s.E2EBuilder.QuasarAccounts.BondTest1,
+			Action:     "bond",
+			BondAmount: sdk.NewCoins(sdk.NewInt64Coin("ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518", int64(j))),
+		})
+		testCases = append(testCases, tc{
+			Account:    s.E2EBuilder.QuasarAccounts.BondTest2,
+			Action:     "bond",
+			BondAmount: sdk.NewCoins(sdk.NewInt64Coin("ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518", int64(j))),
+		})
+		testCases = append(testCases, tc{
+			Account:    s.E2EBuilder.QuasarAccounts.BondTest3,
+			Action:     "bond",
+			BondAmount: sdk.NewCoins(sdk.NewInt64Coin("ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518", int64(j))),
+		})
 	}
 
 	for i, tc := range testCases {
@@ -220,13 +234,124 @@ func (s *WasmdTestSuite) TestLockBond() {
 				map[string]any{"bond": map[string]any{}},
 				nil,
 			)
+
+			// print the bond state of all the contracts
+			s.GetStates(ctx)
 		default:
 			t.Log("yay")
 		}
-		if i%50 == 0 {
+
+		// unbond half of the balance from the last 4 test cases
+		if i%20 == 0 && i != 0 {
+			balance3 := s.GetAccountBalanceInVault(ctx, testCases[i-3].Account.Address)
+			t.Logf("doing a unbond for %s with amount %s", testCases[i-3].Account.KeyName, strconv.FormatInt(balance3, 10))
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-3].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"unbond": map[string]any{"amount": strconv.FormatInt(balance3/2, 10)}},
+				nil,
+			)
+
+			balance2 := s.GetAccountBalanceInVault(ctx, testCases[i-2].Account.Address)
+			t.Logf("doing a unbond for %s with amount %s", testCases[i-2].Account.KeyName, strconv.FormatInt(balance2, 10))
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-2].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"unbond": map[string]any{"amount": strconv.FormatInt(balance2/2, 10)}},
+				nil,
+			)
+
+			balance1 := s.GetAccountBalanceInVault(ctx, testCases[i-1].Account.Address)
+			t.Logf("doing a unbond for %s with amount %s", testCases[i-1].Account.KeyName, strconv.FormatInt(balance1, 10))
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-1].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"unbond": map[string]any{"amount": strconv.FormatInt(balance1/2, 10)}},
+				nil,
+			)
+
+			balance := s.GetAccountBalanceInVault(ctx, testCases[i].Account.Address)
+			t.Logf("doing a unbond for %s with amount %s", testCases[i].Account.KeyName, strconv.FormatInt(balance, 10))
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"unbond": map[string]any{"amount": strconv.FormatInt(balance/2, 10)}},
+				nil,
+			)
+
+			// print the bond state of all the contracts
+			s.GetStates(ctx)
+		}
+
+		//claim from all the last 4 test cases
+		if i%30 == 0 && i != 0 {
+			t.Logf("doing a claim for %s", testCases[i-3].Account.KeyName)
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-3].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"claim": map[string]any{}},
+				nil,
+			)
+
+			t.Logf("doing a claim for %s", testCases[i-2].Account.KeyName)
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-2].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"claim": map[string]any{}},
+				nil,
+			)
+
+			t.Logf("doing a claim for %s", testCases[i-1].Account.KeyName)
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i-1].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"claim": map[string]any{}},
+				nil,
+			)
+
+			t.Logf("doing a claim for %s", testCases[i].Account.KeyName)
+			s.ExecuteContract(
+				ctx,
+				s.Quasar(),
+				testCases[i].Account.KeyName,
+				s.BasicVaultContractAddress,
+				sdk.NewCoins(),
+				map[string]any{"claim": map[string]any{}},
+				nil,
+			)
+			// print the bond state of all the contracts
+			s.GetStates(ctx)
+		}
+
+		// clear cache on contracts after every 20 test cases
+		if i%20 == 0 {
 			t.Log("Wait for quasar and osmosis to settle up ICA packet transfer and the ibc transfer")
 			err := testutil.WaitForBlocks(ctx, 5, s.Quasar(), s.Osmosis())
 			s.Require().NoError(err)
+
+			// print the bond state of all the contracts
+			s.GetStates(ctx)
 
 			s.ExecuteContract(
 				ctx,
@@ -239,81 +364,13 @@ func (s *WasmdTestSuite) TestLockBond() {
 			)
 
 			t.Log("Wait for quasar to clear cache and settle up ICA packet transfer and the ibc transfer")
-			err = testutil.WaitForBlocks(ctx, 15, s.Quasar(), s.Osmosis())
+			err = testutil.WaitForBlocks(ctx, 10, s.Quasar(), s.Osmosis())
 			s.Require().NoError(err)
+
+			// print the bond state of all the contracts
+			s.GetStates(ctx)
 		}
 	}
-
-	type lockRes struct {
-		Data struct {
-			Lock struct {
-				Bond        string `json:"bond"`
-				StartUnbond string `json:"start_unbond"`
-				Unbond      string `json:"unbond"`
-				Recovery    string `json:"recovery"`
-				Migration   string `json:"migration"`
-			} `json:"lock"`
-		} `json:"data"`
-	}
-
-	for i := 1; i < 1000; i++ {
-		var response lockRes
-		res := s.ExecuteContractQuery(
-			ctx,
-			s.Quasar(),
-			s.LpStrategyContractAddress1,
-			map[string]any{"lock": map[string]any{}},
-		)
-
-		err := json.Unmarshal(res, &response)
-		s.Require().NoError(err)
-
-		if response.Data.Lock.Bond == "locked" {
-			fmt.Println(s.LpStrategyContractAddress1, "locked")
-		} else {
-			fmt.Println(s.LpStrategyContractAddress1, "unlocked")
-		}
-
-		res = s.ExecuteContractQuery(
-			ctx,
-			s.Quasar(),
-			s.LpStrategyContractAddress2,
-			map[string]any{"lock": map[string]any{}},
-		)
-
-		err = json.Unmarshal(res, &response)
-		s.Require().NoError(err)
-
-		if response.Data.Lock.Bond == "locked" {
-			fmt.Println(s.LpStrategyContractAddress2, "locked")
-		} else {
-			fmt.Println(s.LpStrategyContractAddress2, "unlocked")
-		}
-
-		res = s.ExecuteContractQuery(
-			ctx,
-			s.Quasar(),
-			s.LpStrategyContractAddress3,
-			map[string]any{"lock": map[string]any{}},
-		)
-
-		err = json.Unmarshal(res, &response)
-		s.Require().NoError(err)
-
-		if response.Data.Lock.Bond == "locked" {
-			fmt.Println(s.LpStrategyContractAddress3, "locked")
-		} else {
-			fmt.Println(s.LpStrategyContractAddress3, "unlocked")
-		}
-
-		//t.Log("Wait for state of the contract to change")
-		err = testutil.WaitForBlocks(ctx, 2, s.Quasar(), s.Osmosis())
-		s.Require().NoError(err)
-
-		fmt.Println("----------------------------")
-	}
-
-	time.Sleep(time.Second * 10000)
 }
 
 // TestLpStrategyContract_SuccessfulDeposit tests the lp strategy contract creating an ICA channel between the contract and osmosis
@@ -433,7 +490,7 @@ func (s *WasmdTestSuite) TestLpStrategyContract_SuccessfulDeposit() {
 			s.ExecuteContract(
 				ctx,
 				s.Quasar(),
-				s.E2EBuilder.QuasarAccounts.BondTest.KeyName,
+				tc.Account.KeyName,
 				s.BasicVaultContractAddress,
 				sdk.NewCoins(),
 				map[string]any{"unbond": map[string]any{"amount": tc.UnbondAmount}},
@@ -492,7 +549,7 @@ func (s *WasmdTestSuite) TestLpStrategyContract_SuccessfulDeposit() {
 			s.ExecuteContract(
 				ctx,
 				s.Quasar(),
-				s.E2EBuilder.QuasarAccounts.BondTest.KeyName,
+				tc.Account.KeyName,
 				s.BasicVaultContractAddress,
 				sdk.NewCoins(),
 				map[string]any{"claim": map[string]any{}},
