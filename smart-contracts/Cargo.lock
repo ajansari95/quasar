@@ -1076,6 +1076,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "index-collateral"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cosmwasm-storage",
+ "cw-multi-test 0.16.2",
+ "cw-storage-plus 1.0.1",
+ "cw2 1.0.1",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
