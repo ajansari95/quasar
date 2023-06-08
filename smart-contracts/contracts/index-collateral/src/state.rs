@@ -22,7 +22,7 @@ impl Assets {
     pub fn new() -> Assets {
         Assets::default()
     }
-
+    
     pub fn from_state(
         storage: &mut dyn Storage,
         map: Map<&str, AssetInfo>,
