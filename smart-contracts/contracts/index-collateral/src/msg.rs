@@ -11,6 +11,8 @@ pub enum ExecuteMsg {
     Deposit {},
     Redeem {},
     Withdraw {},
+    // execute messages for the underlying router
+    Router(),
 }
 
 #[cw_serde]

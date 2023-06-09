@@ -27,9 +27,16 @@ pub fn execute(
     _deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    _msg: ExecuteMsg,
+    msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
-    unimplemented!()
+    match msg {
+        ExecuteMsg::AcceptCollateral {} => todo!(),
+        ExecuteMsg::AcceptRewards {} => todo!(),
+        ExecuteMsg::Deposit {} => todo!(),
+        ExecuteMsg::Redeem {} => todo!(),
+        ExecuteMsg::Withdraw {} => todo!(),
+        ExecuteMsg::Router() => todo!(),
+    }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
