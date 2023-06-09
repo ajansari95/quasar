@@ -135,7 +135,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
     }
 }
 
-fn handle_get_memo(
+pub fn handle_get_memo(
     deps: Deps,
     route_id: RouteId,
     timeout: String,
@@ -159,14 +159,14 @@ fn handle_get_memo(
     }
 }
 
-fn handle_get_route(deps: Deps, route_id: RouteId) -> ContractResult<GetRouteResponse> {
+pub fn handle_get_route(deps: Deps, route_id: RouteId) -> ContractResult<GetRouteResponse> {
     let route = ROUTES
         .may_load(deps.storage, &route_id)?
         .ok_or(ContractError::DestinationNotExists)?;
     Ok(GetRouteResponse { route })
 }
 
-fn handle_list_routes(deps: Deps) -> ContractResult<ListRoutesResponse> {
+pub fn handle_list_routes(deps: Deps) -> ContractResult<ListRoutesResponse> {
     let routes: StdResult<Vec<(RouteId, Route)>> = ROUTES
         .range(deps.storage, None, None, Order::Descending)
         .collect();
