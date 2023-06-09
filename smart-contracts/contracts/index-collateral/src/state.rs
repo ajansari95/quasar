@@ -13,7 +13,7 @@ pub const ASSETS: Map<String, Asset> = Map::new("assets");
 /// Any normalization or other calcultations are done over the entire map.
 pub const USED_ASSETS: Map<&str, AssetInfo> = Map::new("used_assets");
 
-/// UsedAssets is the struct representation of USED_ASSETS, a new assets should either be createed through new 
+/// UsedAssets is the struct representation of USED_ASSETS, a new assets should either be createed through new
 /// in combination with add_asset(), or preferably, with_assets(). It can then be saved to state with to_state().
 /// UsedAssets can be directly created from USED_ASSETS with from_state
 pub struct UsedAssets {
