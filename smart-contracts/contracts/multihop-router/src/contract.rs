@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdResult,
+    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Order, Response, StdResult, Storage,
 };
 // use cw2::set_contract_version;
 
@@ -124,26 +124,26 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
             retries,
             actual_memo,
         } => Ok(to_binary(&handle_get_memo(
-            deps,
+            deps.storage,
             route_id,
             timeout,
             retries,
             actual_memo,
         )?)?),
-        QueryMsg::GetRoute { route_id } => Ok(to_binary(&handle_get_route(deps, route_id)?)?),
-        QueryMsg::ListRoutes {} => Ok(to_binary(&handle_list_routes(deps)?)?),
+        QueryMsg::GetRoute { route_id } => Ok(to_binary(&handle_get_route(deps.storage, route_id)?)?),
+        QueryMsg::ListRoutes {} => Ok(to_binary(&handle_list_routes(deps.storage)?)?),
     }
 }
 
 pub fn handle_get_memo(
-    deps: Deps,
+    storage: &dyn Storage,
     route_id: RouteId,
     timeout: String,
     retries: i64,
     actual_memo: Option<String>,
 ) -> ContractResult<GetMemoResponse> {
     let route = ROUTES
-        .may_load(deps.storage, &route_id)?
+        .may_load(storage, &route_id)?
         .ok_or(ContractError::DestinationNotExists)?;
     match route.hop {
         Some(hop) => Ok(GetMemoResponse {
@@ -159,16 +159,16 @@ pub fn handle_get_memo(
     }
 }
 
-pub fn handle_get_route(deps: Deps, route_id: RouteId) -> ContractResult<GetRouteResponse> {
+pub fn handle_get_route(storage: &dyn Storage, route_id: RouteId) -> ContractResult<GetRouteResponse> {
     let route = ROUTES
-        .may_load(deps.storage, &route_id)?
+        .may_load(storage, &route_id)?
         .ok_or(ContractError::DestinationNotExists)?;
     Ok(GetRouteResponse { route })
 }
 
-pub fn handle_list_routes(deps: Deps) -> ContractResult<ListRoutesResponse> {
+pub fn handle_list_routes(storage: &dyn Storage) -> ContractResult<ListRoutesResponse> {
     let routes: StdResult<Vec<(RouteId, Route)>> = ROUTES
-        .range(deps.storage, None, None, Order::Descending)
+        .range(storage, None, None, Order::Descending)
         .collect();
     Ok(ListRoutesResponse {
         routes: routes?
