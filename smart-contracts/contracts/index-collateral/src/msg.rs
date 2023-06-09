@@ -1,4 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use multihop_router::msg::ExecuteMsg as RouterExecuteMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -12,7 +13,7 @@ pub enum ExecuteMsg {
     Redeem {},
     Withdraw {},
     // execute messages for the underlying router
-    Router(),
+    Router(RouterExecuteMsg),
 }
 
 #[cw_serde]

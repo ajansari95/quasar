@@ -6,6 +6,8 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult}
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
+use multihop_router::contract::execute as router_execute;
+
 /*
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:index-collateral";
@@ -24,9 +26,9 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
-    _deps: DepsMut,
-    _env: Env,
-    _info: MessageInfo,
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
@@ -35,7 +37,8 @@ pub fn execute(
         ExecuteMsg::Deposit {} => todo!(),
         ExecuteMsg::Redeem {} => todo!(),
         ExecuteMsg::Withdraw {} => todo!(),
-        ExecuteMsg::Router() => todo!(),
+        // TODO see if we make the collateral contract admin of the router or keep the sender here as sender
+        ExecuteMsg::Router(msg) => Ok(router_execute(deps, env, info, msg)?),
     }
 }
 
