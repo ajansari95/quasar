@@ -13,23 +13,25 @@ pub const ASSETS: Map<String, Asset> = Map::new("assets");
 /// Any normalization or other calcultations are done over the entire map.
 pub const USED_ASSETS: Map<&str, AssetInfo> = Map::new("used_assets");
 
-/// Assets are the assets being
-pub struct Assets {
+/// UsedAssets is the struct representation of USED_ASSETS, a new assets should either be createed through new 
+/// in combination with add_asset(), or preferably, with_assets(). It can then be saved to state with to_state().
+/// UsedAssets can be directly created from USED_ASSETS with from_state
+pub struct UsedAssets {
     assets: Vec<AssetInfo>,
 }
 
-impl Assets {
-    pub fn new() -> Assets {
-        Assets::default()
+impl UsedAssets {
+    pub fn new() -> UsedAssets {
+        UsedAssets::default()
     }
-    
+
     pub fn from_state(
         storage: &mut dyn Storage,
         map: Map<&str, AssetInfo>,
-    ) -> Result<Assets, ContractError> {
+    ) -> Result<UsedAssets, ContractError> {
         let items: Result<Vec<(String, AssetInfo)>, StdError> =
             map.range(storage, None, None, Order::Ascending).collect();
-        Ok(Assets {
+        Ok(UsedAssets {
             assets: items?.into_iter().map(|(_, v)| v).collect(),
         })
     }
@@ -46,8 +48,8 @@ impl Assets {
     }
 
     /// Instantiate assets from a vec of assets
-    pub fn with_assets(assets: Vec<AssetInfo>) -> Assets {
-        let mut assets = Assets { assets };
+    pub fn with_assets(assets: Vec<AssetInfo>) -> UsedAssets {
+        let mut assets = UsedAssets { assets };
         assets.normalize();
         assets
     }
@@ -71,7 +73,7 @@ impl Assets {
     }
 }
 
-impl Default for Assets {
+impl Default for UsedAssets {
     fn default() -> Self {
         Self { assets: vec![] }
     }
