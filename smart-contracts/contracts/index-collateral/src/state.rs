@@ -1,6 +1,7 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128};
 use cw_storage_plus::Map;
+use multihop_router::route::Destination;
 
 use crate::ContractError;
 
@@ -79,7 +80,6 @@ impl Default for UsedAssets {
     }
 }
 
-// TODO change destination to Destination once the multiphop-router PR is merged
 #[cw_serde]
 pub struct AssetInfo {
     asset: Asset,
@@ -95,7 +95,7 @@ impl AssetInfo {
         raw_ratio: Uint128,
     ) -> AssetInfo {
         AssetInfo {
-            asset: Asset::new(denom, destination, deposit_ica),
+            asset: Asset::new(denom, destination.into(), deposit_ica),
             // we always set ratio to 0, since we only want ration to be calculated in comparison to other ratios
             ratio: Decimal::zero(),
             raw_ratio,
@@ -106,14 +106,14 @@ impl AssetInfo {
 #[cw_serde]
 pub struct Asset {
     denom: String,
-    destination: String,
+    destination: Destination,
     deposit_ica: String,
 }
 
 impl Asset {
     pub fn new(
         denom: impl Into<String>,
-        destination: impl Into<String>,
+        destination: impl Into<Destination>,
         deposit_ica: impl Into<String>,
     ) -> Asset {
         Asset {
