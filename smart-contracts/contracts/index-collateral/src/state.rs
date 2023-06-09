@@ -105,9 +105,9 @@ impl AssetInfo {
 
 #[cw_serde]
 pub struct Asset {
-    denom: String,
-    destination: Destination,
-    deposit_ica: String,
+    pub denom: String,
+    pub destination: Destination,
+    pub deposit_ica: String,
 }
 
 impl Asset {
