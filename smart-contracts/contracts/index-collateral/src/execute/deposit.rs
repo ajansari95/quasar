@@ -1,15 +1,11 @@
 #[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    StdResult, Storage, Uint128,
+    coin, Coin, IbcMsg, IbcTimeout, Response, Storage, Uint128,
 };
 use multihop_router::contract::handle_get_route;
 use multihop_router::route::RouteId;
-// use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{ASSETS, BONDING_FUNDS};
 
 pub(crate) fn execute_deposit(coins: Vec<Coin>) -> Result<Response, ContractError> {
