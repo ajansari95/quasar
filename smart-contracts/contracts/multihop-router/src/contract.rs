@@ -130,7 +130,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> ContractResult<Binary> {
             retries,
             actual_memo,
         )?)?),
-        QueryMsg::GetRoute { route_id } => Ok(to_binary(&handle_get_route(deps.storage, route_id)?)?),
+        QueryMsg::GetRoute { route_id } => {
+            Ok(to_binary(&handle_get_route(deps.storage, route_id)?)?)
+        }
         QueryMsg::ListRoutes {} => Ok(to_binary(&handle_list_routes(deps.storage)?)?),
     }
 }
@@ -159,7 +161,10 @@ pub fn handle_get_memo(
     }
 }
 
-pub fn handle_get_route(storage: &dyn Storage, route_id: RouteId) -> ContractResult<GetRouteResponse> {
+pub fn handle_get_route(
+    storage: &dyn Storage,
+    route_id: RouteId,
+) -> ContractResult<GetRouteResponse> {
     let route = ROUTES
         .may_load(storage, &route_id)?
         .ok_or(ContractError::DestinationNotExists)?;

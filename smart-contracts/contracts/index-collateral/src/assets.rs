@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Storage, StdError, Order, Decimal, Uint128};
+use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128};
 use cw_storage_plus::Map;
 use multihop_router::route::Destination;
 
