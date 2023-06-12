@@ -6,11 +6,11 @@ use crate::ContractError;
 // TODO write some tests to see if this replies structure works
 #[cw_serde]
 pub enum Replies {
-    Swap
+    Swap,
 }
 
 pub fn handle_reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractError> {
-    if msg.id == Replies::Swap as u64{
+    if msg.id == Replies::Swap as u64 {
         todo!()
     }
     todo!()
