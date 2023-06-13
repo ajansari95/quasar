@@ -24,23 +24,11 @@
   packages =
     rec {
       # Go packages
-      stoml = pkgs.buildGoModule {
-        name = "stoml";
-        src = inputs.stoml-src;
-        vendorSha256 = "sha256-37PcS7qVQ+IVZddcm+KbUjRjql7KIzynVGKpIHAk5GY=";
-      };
-
-      sconfig = pkgs.buildGoModule {
-        name = "sconfig";
-        src = inputs.sconfig-src;
-        vendorSha256 = "sha256-ytpye6zEZC4oLrif8xe6Vr99lblule9HiAyZsSisIPg=";
-      };
-
       quasar = utilities.mkCosmosGoApp {
         name = "quasar";
-        version = "v0.1.0";
+        version = "v0.1.1";
         src = inputs.quasar-src;
-        vendorSha256 = "sha256-rxKwYS0+lKjY7EUvO8/1isCznf8vL4GN2b+ZKAhNpdM=";
+        vendorSha256 = "sha256-ODP4ZBFpLWLT7FWssJG0SFUy5jRzl+bGaYEE87eJLuM=";
         engine = "tendermint/tendermint";
         preFixup = ''
           ${utilities.wasmdPreFixupPhase libwasmvm_1_2_0 "quasarnoded"}
@@ -204,18 +192,18 @@
           sconfig = packages.sconfig;
           mkDerivation = stdenv.mkDerivation;
         };
-#      ts-relayer =
-#        ((import ./resources/ts-relayer) {
-#          inherit pkgs eval-pkgs;
-#          inherit (inputs) ts-relayer-src;
-#        })
-#        .ts-relayer;
-#      ts-relayer-setup =
-#        ((import ./resources/ts-relayer) {
-#          inherit pkgs eval-pkgs;
-#          inherit (inputs) ts-relayer-src;
-#        })
-#        .ts-relayer-setup;
+
+      stoml = pkgs.buildGoModule {
+        name = "stoml";
+        src = inputs.stoml-src;
+        vendorSha256 = "sha256-37PcS7qVQ+IVZddcm+KbUjRjql7KIzynVGKpIHAk5GY=";
+      };
+
+      sconfig = pkgs.buildGoModule {
+        name = "sconfig";
+        src = inputs.sconfig-src;
+        vendorSha256 = "sha256-ytpye6zEZC4oLrif8xe6Vr99lblule9HiAyZsSisIPg=";
+      };
 
       tx-database-migration = pkgs.writeTextFile {
         name = "tx_index_schema.sql";

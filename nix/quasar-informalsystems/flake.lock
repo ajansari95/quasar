@@ -63,18 +63,19 @@
         "type": "github"
       }
     },
-    "gaia-main-src": {
+    "gaia-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1664958609,
-        "narHash": "sha256-w9tJJXimf0AhYhgColCjdHGh14sAId0Svtz/hHNYNlI=",
+        "lastModified": 1685027301,
+        "narHash": "sha256-tirjxye6grohjV7nIEpncF88Ny4zDBYppCCfq/D8d88=",
         "owner": "cosmos",
         "repo": "gaia",
-        "rev": "4d3a104f6ce6f441e6588cdb8fa6e600396ad3ac",
+        "rev": "66494d1ec72cfa0f8800aa8f1545e19d2af47e47",
         "type": "github"
       },
       "original": {
         "owner": "cosmos",
+        "ref": "v9.1.1",
         "repo": "gaia",
         "type": "github"
       }
@@ -328,17 +329,18 @@
     "quasar-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1686587677,
-        "narHash": "sha256-NDlOyOlVKfVSrqUfofvKeg0wELpxsrG/TMBLzhEHcxc=",
-        "ref": "refs/heads/main",
-        "rev": "7de678dc22271a6576a7fb83ca35c3fe7fb9593a",
-        "revCount": 1788,
-        "type": "git",
-        "url": "ssh://git@github.com/quasar-finance/quasar.git"
+        "lastModified": 1685029331,
+        "narHash": "sha256-FTHWBvYzQG71LPB/IERWM6lX7u04RLajF6e9g3FAqpA=",
+        "owner": "quasar-finance",
+        "repo": "quasar-preview",
+        "rev": "dd90cdbbb772d55396f781fe70578a832eb83767",
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "ssh://git@github.com/quasar-finance/quasar.git"
+        "owner": "quasar-finance",
+        "ref": "v0.1.1",
+        "repo": "quasar-preview",
+        "type": "github"
       }
     },
     "quicksilver-src": {
@@ -379,7 +381,7 @@
       "inputs": {
         "cosmos-sdk-src": "cosmos-sdk-src",
         "flake-utils": "flake-utils",
-        "gaia-main-src": "gaia-main-src",
+        "gaia-src": "gaia-src",
         "ibc-go-v2-src": "ibc-go-v2-src",
         "ibc-go-v3-src": "ibc-go-v3-src",
         "ibc-go-v4-src": "ibc-go-v4-src",

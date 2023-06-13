@@ -29,10 +29,7 @@
     relayer-src.url = github:cosmos/relayer/v1.0.0;
     relayer-src.flake = false;
 
-    # Chain Sources
-
-    gaia-main-src.flake = false;
-    gaia-main-src.url = github:cosmos/gaia;
+    # IBC
 
     ibc-go-v2-src.flake = false;
     ibc-go-v2-src.url = github:cosmos/ibc-go/v2.4.1;
@@ -55,8 +52,13 @@
     cosmos-sdk-src.flake = false;
     cosmos-sdk-src.url = github:cosmos/cosmos-sdk/v0.46.0;
 
+    # Chains
+
     quasar-src.flake = false;
-    quasar-src.url = git+ssh://git@github.com/quasar-finance/quasar.git;
+    quasar-src.url = github:quasar-finance/quasar-preview/v0.1.1; # TODO change this with /quasar repo once open sourced
+
+    gaia-src.flake = false;
+    gaia-src.url = github:cosmos/gaia/v9.1.1;
 
     osmosis-src.flake = false;
     osmosis-src.url = github:osmosis-labs/osmosis/v15.0.0;
@@ -128,19 +130,7 @@
 
         # nix run .#<app>
         apps = {
-          # func
-          stoml = mkApp {
-            name = "stoml";
-            drv = packages.stoml;
-          };
-          sconfig = mkApp {
-            name = "sconfig";
-            drv = packages.sconfig;
-          };
-          gm = mkApp {
-            name = "gm";
-            drv = packages.gm;
-          };
+
           # chains
           gaia-main = mkApp {
             name = "gaia";
@@ -165,6 +155,19 @@
           relayer = mkApp {
             name = "relayer";
             drv = packages.relayer;
+          };
+          # misc
+          stoml = mkApp {
+            name = "stoml";
+            drv = packages.stoml;
+          };
+          sconfig = mkApp {
+            name = "sconfig";
+            drv = packages.sconfig;
+          };
+          gm = mkApp {
+            name = "gm";
+            drv = packages.gm;
           };
         };
       });
