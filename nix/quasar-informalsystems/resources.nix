@@ -209,6 +209,29 @@
         name = "tx_index_schema.sql";
         text = builtins.readFile ./fixtures/tx_index_schema.sql;
       };
+
+      #docker
+      quasarImage = pkgs.dockerTools.buildImage {
+        name = "quasar";
+        tag = "latest";
+        drv = quasar.overrideAttrs (old: { src = null; });
+      };
+      # skipping gaiaImage
+      osmosisImage = pkgs.dockerTools.buildLayeredImage {
+        name = "osmosis";
+        tag = "latest";
+        drv = osmosis.overrideAttrs (old: { src = null; });
+      };
+      quicksilverImage = pkgs.dockerTools.buildNixShellImage {
+        name = "quicksilver";
+        tag = "latest";
+        drv = quicksilver.overrideAttrs (old: { src = null; });
+      };
+      relayerImage = pkgs.dockerTools.buildNixShellImage {
+        name = "relayer";
+        tag = "latest";
+        drv = relayer.overrideAttrs (old: { src = null; });
+      };
     }
     // gaia-packages
     // ibc-packages;

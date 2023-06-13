@@ -14,6 +14,11 @@ nix flake show
 nix flake check
 ```
 
+## Getting started
+
+- Installing nix
+- Enabling experimental features
+
 ## Building with Nix Shell
 
 Here's how to build your preferred application, for instance, `quasar`:

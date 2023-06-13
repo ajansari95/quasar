@@ -130,11 +130,10 @@
 
         # nix run .#<app>
         apps = {
-
           # chains
-          gaia-main = mkApp {
+          gaia = mkApp {
             name = "gaia";
-            drv = packages.gaia-main;
+            drv = packages.gaia;
             exePath = "/bin/gaiad";
           };
           osmosis = mkApp {
