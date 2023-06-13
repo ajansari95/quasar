@@ -211,26 +211,82 @@
       };
 
       #docker
-      quasarImage = pkgs.dockerTools.buildImage {
+      # this is disabled due to error: Unsupported guest system aarch64-darwin for host aarch64-darwin, supported: aarch64-linux
+#      quasarImage = pkgs.dockerTools.buildImage {
+#        name = "quasar";
+#        tag = "latest";
+#        runAsRoot = ''
+#          #!${pkgs.runtimeShell}
+#          mkdir -p /var/quasar
+#        '';
+#        copyToRoot = pkgs.buildEnv {
+#          name = "image-root";
+#          paths = [ quasar ];
+#          pathsToLink = [ "/bin" ];
+#        };
+#        config = {
+#          Cmd = [ "/bin/quasarnoded" ];
+#          WorkingDir = "/var/quasar";
+#        };
+#      };
+
+      quasarImage = pkgs.dockerTools.buildLayeredImage {
         name = "quasar";
         tag = "latest";
-        drv = quasar.overrideAttrs (old: { src = null; });
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "quasar-env"; paths = [ quasar ]; }) ];
+        config = {
+          Cmd = [ "/bin/quasarnoded" ];
+          WorkingDir = "/var/quasar";
+          Volumes = { "/var/quasar" = {}; };
+        };
       };
-      # skipping gaiaImage
+
       osmosisImage = pkgs.dockerTools.buildLayeredImage {
         name = "osmosis";
         tag = "latest";
-        drv = osmosis.overrideAttrs (old: { src = null; });
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "osmosis-env"; paths = [ osmosis ]; }) ];
+        config = {
+          Cmd = [ "/bin/osmosisd" ];
+          WorkingDir = "/var/osmosis";
+          Volumes = { "/var/osmosis" = {}; };
+        };
       };
-      quicksilverImage = pkgs.dockerTools.buildNixShellImage {
+
+      # those were just tries with .buildNixShellImage
+#      quicksilverImage = pkgs.dockerTools.buildNixShellImage {
+#        name = "quicksilver";
+#        tag = "latest";
+#        drv = quicksilver.overrideAttrs (old: { src = null; });
+#      };
+#      relayerImage = pkgs.dockerTools.buildNixShellImage {
+#        name = "relayer";
+#        tag = "latest";
+#        drv = relayer.overrideAttrs (old: { src = null; });
+#      };
+      quicksilverImage = pkgs.dockerTools.buildLayeredImage {
         name = "quicksilver";
         tag = "latest";
-        drv = quicksilver.overrideAttrs (old: { src = null; });
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "quicksilver-env"; paths = [ quicksilver ]; }) ];
+        config = {
+          Cmd = [ "/bin/quicksilverd" ];
+          WorkingDir = "/var/quicksilver";
+          Volumes = { "/var/quicksilver" = {}; };
+        };
       };
-      relayerImage = pkgs.dockerTools.buildNixShellImage {
+
+      relayerImage = pkgs.dockerTools.buildLayeredImage {
         name = "relayer";
         tag = "latest";
-        drv = relayer.overrideAttrs (old: { src = null; });
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "relayer-env"; paths = [ relayer ]; }) ];
+        config = {
+          Cmd = [ "/bin/relayer" ];
+          WorkingDir = "/var/relayer";
+          Volumes = { "/var/relayer" = {}; };
+        };
       };
     }
     // gaia-packages
