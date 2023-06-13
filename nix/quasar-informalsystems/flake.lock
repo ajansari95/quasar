@@ -325,6 +325,22 @@
         "type": "github"
       }
     },
+    "quasar-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1686587677,
+        "narHash": "sha256-NDlOyOlVKfVSrqUfofvKeg0wELpxsrG/TMBLzhEHcxc=",
+        "ref": "refs/heads/main",
+        "rev": "7de678dc22271a6576a7fb83ca35c3fe7fb9593a",
+        "revCount": 1788,
+        "type": "git",
+        "url": "ssh://git@github.com/quasar-finance/quasar.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/quasar-finance/quasar.git"
+      }
+    },
     "relayer-src": {
       "flake": false,
       "locked": {
@@ -358,6 +374,7 @@
         "nixpkgs": "nixpkgs",
         "osmosis-src": "osmosis-src",
         "pre-commit-hooks": "pre-commit-hooks",
+        "quasar-src": "quasar-src",
         "relayer-src": "relayer-src",
         "rust-overlay": "rust-overlay",
         "sbt-derivation": "sbt-derivation",

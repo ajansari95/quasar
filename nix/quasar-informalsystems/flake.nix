@@ -58,6 +58,9 @@
     osmosis-src.flake = false;
     osmosis-src.url = github:osmosis-labs/osmosis/v15.0.0;
 
+    quasar-src.flake = false;
+    quasar-src.url = git+ssh://git@github.com/quasar-finance/quasar.git;
+
     wasmvm_1-src.flake = false;
     wasmvm_1-src.url = github:CosmWasm/wasmvm/v1.0.0;
 

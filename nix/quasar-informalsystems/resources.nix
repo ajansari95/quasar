@@ -58,15 +58,17 @@
       quasar = utilities.mkCosmosGoApp {
         name = "quasar";
         version = "v0.1.0";
-        #src = ../../.;
-        vendorSha256 = "sha256-4RNRAtQmWdi9ZYUH7Rn5VRef/ZhGB7WDwyelUf+U/rc="; # TODO change this once known from flake.lock
+        src = inputs.quasar-src;
+        vendorSha256 = "sha256-rxKwYS0+lKjY7EUvO8/1isCznf8vL4GN2b+ZKAhNpdM=";
         engine = "tendermint/tendermint";
         preFixup = ''
           ${utilities.wasmdPreFixupPhase libwasmvm_1_2_0 "quasarnoded"}
         '';
         buildInputs = [libwasmvm_1_2_0];
-        # Fix for private repository TODO remove once open source
-        src = builtins.dirOf ../../. // { rev = builtins.substring 0 7 (builtins.readFile "${./../../.}/.git/refs/heads/main"); };
+        proxyVendor = true;
+
+        # Test has to be skipped as end-to-end testing requires network access
+        doCheck = false;
       };
 
       relayer = pkgs.buildGoModule {
