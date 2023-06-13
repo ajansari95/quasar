@@ -36,6 +36,22 @@
         vendorSha256 = "sha256-ytpye6zEZC4oLrif8xe6Vr99lblule9HiAyZsSisIPg=";
       };
 
+      quasar = utilities.mkCosmosGoApp {
+        name = "quasar";
+        version = "v0.1.0";
+        src = inputs.quasar-src;
+        vendorSha256 = "sha256-rxKwYS0+lKjY7EUvO8/1isCznf8vL4GN2b+ZKAhNpdM=";
+        engine = "tendermint/tendermint";
+        preFixup = ''
+          ${utilities.wasmdPreFixupPhase libwasmvm_1_2_0 "quasarnoded"}
+        '';
+        buildInputs = [libwasmvm_1_2_0];
+        proxyVendor = true;
+
+        # Test has to be skipped as end-to-end testing requires network access
+        doCheck = false;
+      };
+
       osmosis = utilities.mkCosmosGoApp {
         name = "osmosis";
         version = "v15.0.0";
@@ -55,16 +71,16 @@
         doCheck = false;
       };
 
-      quasar = utilities.mkCosmosGoApp {
-        name = "quasar";
-        version = "v0.1.0";
-        src = inputs.quasar-src;
-        vendorSha256 = "sha256-rxKwYS0+lKjY7EUvO8/1isCznf8vL4GN2b+ZKAhNpdM=";
+      quicksilver = utilities.mkCosmosGoApp {
+        name = "quicksilver";
+        version = "v1.2.13";
+        src = inputs.quicksilver-src;
+        vendorSha256 = "sha256-DrDkTAlju+CoLdoEkdcFpV+iYVTej+Xw68m5cT3ghiQ=";
         engine = "tendermint/tendermint";
         preFixup = ''
-          ${utilities.wasmdPreFixupPhase libwasmvm_1_2_0 "quasarnoded"}
+          ${utilities.wasmdPreFixupPhase libwasmvm_1_1_0 "quicksilverd"}
         '';
-        buildInputs = [libwasmvm_1_2_0];
+        buildInputs = [libwasmvm_1_1_0];
         proxyVendor = true;
 
         # Test has to be skipped as end-to-end testing requires network access
@@ -101,7 +117,7 @@
         doCheck = false;
       };
 
-      # quasar is using this
+      # quasar is using this as uses v0.31 of wamsd module
       libwasmvm_1_2_0 = pkgs.rustPlatform.buildRustPackage {
         pname = "libwasmvm";
         src = "${inputs.wasmvm_1_2_0-src}/libwasmvm";
@@ -125,6 +141,20 @@
           ln -s $out/lib/libwasmvm.so $out/lib/libwasmvm.${builtins.head (pkgs.lib.strings.splitString "-" system)}.so
         '';
         cargoSha256 = "sha256-97BhqI1FZyDbVrT5hdyEK7VPtpE9lQgWduc/siH6NqE";
+        doCheck = false;
+      };
+
+      # quicksilver is using this as uses v0.29 of wasmd module
+      libwasmvm_1_1_0 = pkgs.rustPlatform.buildRustPackage {
+        pname = "libwasmvm";
+        src = "${inputs.wasmvm_1_1_0-src}/libwasmvm";
+        version = "v1.1.0";
+        nativeBuildInputs = with pkgs; [rust-bin.stable.latest.default];
+        postInstall = ''
+          cp ./bindings.h $out/lib/
+          ln -s $out/lib/libwasmvm.so $out/lib/libwasmvm.${builtins.head (pkgs.lib.strings.splitString "-" system)}.so
+        '';
+        cargoSha256 = "sha256-jkruBy5IfD+fhkE/72ceaevVT8ROjjnCwblscC/VtE0=";
         doCheck = false;
       };
 

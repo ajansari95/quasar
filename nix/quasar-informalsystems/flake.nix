@@ -55,11 +55,14 @@
     cosmos-sdk-src.flake = false;
     cosmos-sdk-src.url = github:cosmos/cosmos-sdk/v0.46.0;
 
+    quasar-src.flake = false;
+    quasar-src.url = git+ssh://git@github.com/quasar-finance/quasar.git;
+
     osmosis-src.flake = false;
     osmosis-src.url = github:osmosis-labs/osmosis/v15.0.0;
 
-    quasar-src.flake = false;
-    quasar-src.url = git+ssh://git@github.com/quasar-finance/quasar.git;
+    quicksilver-src.flake = false;
+    quicksilver-src.url = github:ingenuity-build/quicksilver/v1.2.13;
 
     wasmvm_1-src.flake = false;
     wasmvm_1-src.url = github:CosmWasm/wasmvm/v1.0.0;
@@ -67,12 +70,16 @@
     wasmvm_1_2_3-src.flake = false;
     wasmvm_1_2_3-src.url = github:CosmWasm/wasmvm/v1.2.3;
 
-    # for quasar which has wasmd v0.31.0
+    # for quasar which has wasmd v0.31
     wasmvm_1_2_0-src.flake = false;
     wasmvm_1_2_0-src.url = github:CosmWasm/wasmvm/v1.2.0;
 
     wasmvm_1_1_1-src.flake = false;
     wasmvm_1_1_1-src.url = github:CosmWasm/wasmvm/v1.1.1;
+
+    # for quicksilver which has wasmd v0.29
+    wasmvm_1_1_0-src.flake = false;
+    wasmvm_1_1_0-src.url = github:CosmWasm/wasmvm/v1.1.0;
 
     wasmvm_1_beta7-src.flake = false;
     wasmvm_1_beta7-src.url = github:CosmWasm/wasmvm/v1.0.0-beta7;

@@ -341,6 +341,23 @@
         "url": "ssh://git@github.com/quasar-finance/quasar.git"
       }
     },
+    "quicksilver-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1685447310,
+        "narHash": "sha256-1oyXZx+IHDlMbonzdW8I35jmROP6lAL+7VJU+Ibbjl0=",
+        "owner": "ingenuity-build",
+        "repo": "quicksilver",
+        "rev": "59f536ae51b2b63446ca43a5610442ba19d123c4",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ingenuity-build",
+        "ref": "v1.2.13",
+        "repo": "quicksilver",
+        "type": "github"
+      }
+    },
     "relayer-src": {
       "flake": false,
       "locked": {
@@ -375,6 +392,7 @@
         "osmosis-src": "osmosis-src",
         "pre-commit-hooks": "pre-commit-hooks",
         "quasar-src": "quasar-src",
+        "quicksilver-src": "quicksilver-src",
         "relayer-src": "relayer-src",
         "rust-overlay": "rust-overlay",
         "sbt-derivation": "sbt-derivation",
@@ -382,6 +400,7 @@
         "stoml-src": "stoml-src",
         "wasmvm_0_16_3-src": "wasmvm_0_16_3-src",
         "wasmvm_1-src": "wasmvm_1-src",
+        "wasmvm_1_1_0-src": "wasmvm_1_1_0-src",
         "wasmvm_1_1_1-src": "wasmvm_1_1_1-src",
         "wasmvm_1_2_0-src": "wasmvm_1_2_0-src",
         "wasmvm_1_2_3-src": "wasmvm_1_2_3-src",
@@ -484,6 +503,23 @@
       "original": {
         "owner": "CosmWasm",
         "ref": "v1.0.0",
+        "repo": "wasmvm",
+        "type": "github"
+      }
+    },
+    "wasmvm_1_1_0-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1662478805,
+        "narHash": "sha256-Cwz610MJ4nWujevkQdory0nJJQov+jqXxOqRPEsBdcw=",
+        "owner": "CosmWasm",
+        "repo": "wasmvm",
+        "rev": "d18217560af2f24f55d15f3bbe2a612a65627723",
+        "type": "github"
+      },
+      "original": {
+        "owner": "CosmWasm",
+        "ref": "v1.1.0",
         "repo": "wasmvm",
         "type": "github"
       }
