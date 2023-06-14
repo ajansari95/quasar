@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128};
+use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128, Coin};
 use cw_storage_plus::Map;
 use multihop_router::route::Destination;
 
@@ -15,6 +15,14 @@ pub struct UsedAssets {
 impl UsedAssets {
     pub fn new() -> UsedAssets {
         UsedAssets::default()
+    }
+
+    pub fn assets(&self) -> &[AssetInfo] {
+        self.assets.as_ref()
+    }
+
+    pub fn into_assets(self) -> Vec<AssetInfo> {
+        self.assets
     }
 
     pub fn from_state(
@@ -63,6 +71,12 @@ impl UsedAssets {
             asset.ratio = Decimal::from_ratio(asset.raw_ratio, total);
         }
     }
+
+    /// Compare a vec of assets and there internal ratios to the expected ratio of the 
+    pub fn cmp_to_balance(&mut self, assets: Vec<Coin>) -> Result<Vec<Coin>, ContractError>{
+        // for all actual assets, we have to calculate
+        todo!()
+    }
 }
 
 impl Default for UsedAssets {
@@ -73,8 +87,8 @@ impl Default for UsedAssets {
 
 #[cw_serde]
 pub struct AssetInfo {
-    asset: Asset,
-    ratio: Decimal,
+    pub(crate) asset: Asset,
+    pub(crate) ratio: Decimal,
     raw_ratio: Uint128,
 }
 

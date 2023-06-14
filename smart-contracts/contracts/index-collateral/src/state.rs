@@ -1,11 +1,9 @@
-use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128};
-use cw_storage_plus::Map;
-use multihop_router::route::Destination;
+use cosmwasm_std::{Uint128};
+use cw_storage_plus::{Map, Item};
+use crate::execute::swap::SwapConfig;
 
 use crate::{
     assets::{Asset, AssetInfo},
-    ContractError,
 };
 
 /// ASSETS is the map of assets known to the index, if there is no entry in the map for an asset
@@ -21,3 +19,5 @@ pub const USED_ASSETS: Map<&str, AssetInfo> = Map::new("used_assets");
 /// Entries in the BONDING_FUNDS are not direct user deposits but are first swapped according
 /// to the ratio in USED_ASSETS.
 pub const BONDING_FUNDS: Map<&str, Uint128> = Map::new("bonding_funds");
+
+pub const SWAP_CONFIG: Item<SwapConfig> = Item::new("swap_config");
