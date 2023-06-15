@@ -211,6 +211,75 @@
       };
 
       #docker
+      quasarImage = pkgs.dockerTools.buildLayeredImage {
+        name = "quasar";
+        tag = "latest";
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "quasar-env"; paths = [ quasar ]; }) ];
+        config = {
+          Cmd = [ "/bin/quasarnoded" ];
+          WorkingDir = "/var/quasar";
+          Volumes = { "/var/quasar" = {}; };
+          ExposedPorts = {
+            "26656/tcp" = {};
+            "26657/tcp" = {};
+            "1317/tcp" = {};
+          };
+        };
+      };
+
+      osmosisImage = pkgs.dockerTools.buildLayeredImage {
+        name = "osmosis";
+        tag = "latest";
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "osmosis-env"; paths = [ osmosis ]; }) ];
+        config = {
+          Cmd = [ "/bin/osmosisd" ];
+          WorkingDir = "/var/osmosis";
+          Volumes = { "/var/osmosis" = {}; };
+          ExposedPorts = {
+            "26656/tcp" = {};
+            "26657/tcp" = {};
+            "1317/tcp" = {};
+          };
+        };
+      };
+
+      quicksilverImage = pkgs.dockerTools.buildLayeredImage {
+        name = "quicksilver";
+        tag = "latest";
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "quicksilver-env"; paths = [ quicksilver ]; }) ];
+        config = {
+          Cmd = [ "/bin/quicksilverd" ];
+          WorkingDir = "/var/quicksilver";
+          Volumes = { "/var/quicksilver" = {}; };
+          ExposedPorts = {
+            "26656/tcp" = {};
+            "26657/tcp" = {};
+            "1317/tcp" = {};
+          };
+        };
+      };
+
+      relayerImage = pkgs.dockerTools.buildLayeredImage {
+        name = "relayer";
+        tag = "latest";
+        maxLayers = 20; # TODO check this
+        contents = [ (pkgs.buildEnv { name = "relayer-env"; paths = [ relayer ]; }) ];
+        config = {
+          Cmd = [ "/bin/relayer" ];
+          WorkingDir = "/var/relayer";
+          Volumes = { "/var/relayer" = {}; };
+          ExposedPorts = {
+            "26656/tcp" = {};
+            "26657/tcp" = {};
+            "1317/tcp" = {};
+          };
+        };
+      };
+
+      # those were just tries with .buildImage and buildNixShellImage
       # this is disabled due to error: Unsupported guest system aarch64-darwin for host aarch64-darwin, supported: aarch64-linux
 #      quasarImage = pkgs.dockerTools.buildImage {
 #        name = "quasar";
@@ -229,32 +298,6 @@
 #          WorkingDir = "/var/quasar";
 #        };
 #      };
-
-      quasarImage = pkgs.dockerTools.buildLayeredImage {
-        name = "quasar";
-        tag = "latest";
-        maxLayers = 20; # TODO check this
-        contents = [ (pkgs.buildEnv { name = "quasar-env"; paths = [ quasar ]; }) ];
-        config = {
-          Cmd = [ "/bin/quasarnoded" ];
-          WorkingDir = "/var/quasar";
-          Volumes = { "/var/quasar" = {}; };
-        };
-      };
-
-      osmosisImage = pkgs.dockerTools.buildLayeredImage {
-        name = "osmosis";
-        tag = "latest";
-        maxLayers = 20; # TODO check this
-        contents = [ (pkgs.buildEnv { name = "osmosis-env"; paths = [ osmosis ]; }) ];
-        config = {
-          Cmd = [ "/bin/osmosisd" ];
-          WorkingDir = "/var/osmosis";
-          Volumes = { "/var/osmosis" = {}; };
-        };
-      };
-
-      # those were just tries with .buildNixShellImage
 #      quicksilverImage = pkgs.dockerTools.buildNixShellImage {
 #        name = "quicksilver";
 #        tag = "latest";
@@ -265,29 +308,6 @@
 #        tag = "latest";
 #        drv = relayer.overrideAttrs (old: { src = null; });
 #      };
-      quicksilverImage = pkgs.dockerTools.buildLayeredImage {
-        name = "quicksilver";
-        tag = "latest";
-        maxLayers = 20; # TODO check this
-        contents = [ (pkgs.buildEnv { name = "quicksilver-env"; paths = [ quicksilver ]; }) ];
-        config = {
-          Cmd = [ "/bin/quicksilverd" ];
-          WorkingDir = "/var/quicksilver";
-          Volumes = { "/var/quicksilver" = {}; };
-        };
-      };
-
-      relayerImage = pkgs.dockerTools.buildLayeredImage {
-        name = "relayer";
-        tag = "latest";
-        maxLayers = 20; # TODO check this
-        contents = [ (pkgs.buildEnv { name = "relayer-env"; paths = [ relayer ]; }) ];
-        config = {
-          Cmd = [ "/bin/relayer" ];
-          WorkingDir = "/var/relayer";
-          Volumes = { "/var/relayer" = {}; };
-        };
-      };
     }
     // gaia-packages
     // ibc-packages;
