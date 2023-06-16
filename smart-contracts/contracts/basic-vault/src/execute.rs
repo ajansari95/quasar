@@ -158,7 +158,7 @@ pub fn get_deposit_and_remainder_for_ratio(
 }
 
 pub fn may_pay_with_ratio(
-    deps: &Deps,
+    deps: Deps,
     funds: &[Coin],
     mut invest: InvestmentInfo,
 ) -> Result<(Vec<Coin>, Vec<Coin>), ContractError> {
@@ -166,7 +166,7 @@ pub fn may_pay_with_ratio(
     invest.normalize_primitive_weights();
 
     // load cached balance of primitive contracts
-    let deposit_amount_ratio = get_deposit_amount_weights(deps, &invest.primitives)?;
+    let deposit_amount_ratio = get_deposit_amount_weights(&deps, &invest.primitives)?;
 
     if deposit_amount_ratio
         .ratio
@@ -252,7 +252,7 @@ pub fn bond(
     let mut deposit_stubs = vec![];
 
     let (primitive_funding_amounts, remainder) =
-        may_pay_with_ratio(&deps.as_ref(), &info.funds, invest.clone())?;
+        may_pay_with_ratio(deps.as_ref(), &info.funds, invest.clone())?;
 
     CAP.update(
         deps.storage,

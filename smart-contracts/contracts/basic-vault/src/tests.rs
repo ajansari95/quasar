@@ -51,6 +51,7 @@ pub struct QuasarQuerier {
 }
 
 impl QuasarQuerier {
+    // primitive state is of the format addr, denom, shares, balance
     pub fn new(primitive_states: Vec<(String, String, Uint128, Uint128)>) -> QuasarQuerier {
         QuasarQuerier {
             primitive_states,
@@ -70,6 +71,26 @@ impl QuasarQuerier {
             }
         }
         (this_denom, total_share, total_balance)
+    }
+
+    pub fn update_state(
+        &mut self,
+        address: &str,
+        new_shares: Option<Uint128>,
+        new_balance: Option<Uint128>,
+    ) {
+        self.primitive_states
+            .iter_mut()
+            .for_each(|(addr, denom, shares, balance)| {
+                if addr == address {
+                    if let Some(new_shares) = new_shares {
+                        *shares = new_shares
+                    };
+                    if let Some(new_balance) = new_balance {
+                        *balance = new_balance
+                    }
+                }
+            })
     }
 
     pub fn set_unbonding_claim_for_primitive(
@@ -411,6 +432,36 @@ fn even_primitives() -> Vec<(String, String, Uint128, Uint128)> {
     ]
 }
 
+fn custom_primitives(
+    p1_shares: Uint128,
+    p1_balance: Uint128,
+    p2_shares: Uint128,
+    p2_balance: Uint128,
+    p3_shares: Uint128,
+    p3_balance: Uint128,
+) -> Vec<(String, String, Uint128, Uint128)> {
+    vec![
+        (
+            "quasar123".to_string(),
+            "ibc/uosmo".to_string(),
+            p1_shares,
+            p1_balance,
+        ),
+        (
+            "quasar124".to_string(),
+            "ibc/uosmo".to_string(),
+            p2_shares,
+            p2_balance,
+        ),
+        (
+            "quasar125".to_string(),
+            "ibc/uosmo".to_string(),
+            p3_shares,
+            p3_balance,
+        ),
+    ]
+}
+
 fn even_primitive_details() -> Vec<(String, String, Decimal)> {
     vec![
         (
@@ -426,6 +477,26 @@ fn even_primitive_details() -> Vec<(String, String, Decimal)> {
         (
             "quasar125".to_string(),
             "ibc/ustars".to_string(),
+            Decimal::one(),
+        ),
+    ]
+}
+
+fn custom_primitive_details() -> Vec<(String, String, Decimal)> {
+    vec![
+        (
+            "quasar123".to_string(),
+            "ibc/uosmo".to_string(),
+            Decimal::one(),
+        ),
+        (
+            "quasar124".to_string(),
+            "ibc/uosmo".to_string(),
+            Decimal::one(),
+        ),
+        (
+            "quasar125".to_string(),
+            "ibc/uosmo".to_string(),
             Decimal::one(),
         ),
     ]
@@ -1142,7 +1213,7 @@ fn test_may_pay_with_even_ratio() {
     let investment_response: InvestmentResponse = from_binary(&query_res).unwrap();
 
     let (coins, remainder) =
-        may_pay_with_ratio(&deps.as_ref(), &even_deposit(), investment_response.info).unwrap();
+        may_pay_with_ratio(deps.as_ref(), &even_deposit(), investment_response.info).unwrap();
 
     assert_eq!(coins.len(), 3);
     assert_eq!(coins[0].amount, Uint128::from(99u128)); // 99 because 0.33333 results in coins getting floored
@@ -1153,6 +1224,120 @@ fn test_may_pay_with_even_ratio() {
     assert_eq!(remainder[0].amount, Uint128::from(1u128));
     assert_eq!(remainder[1].amount, Uint128::from(1u128));
     assert_eq!(remainder[2].amount, Uint128::from(1u128));
+}
+
+#[test]
+fn test_it() {
+    let mut deps = mock_deps_with_primitives(custom_primitives(
+        Uint128::new(415641414982),
+        Uint128::new(528406804680),
+        Uint128::new(322417416704),
+        Uint128::new(533853523609),
+        Uint128::new(23862188785),
+        Uint128::new(545865719383),
+    ));
+    let init_msg = init_msg_with_primitive_details(custom_primitive_details());
+    let info = mock_info(TEST_CREATOR, &[]);
+    let env = mock_env();
+    let res = init(deps.as_mut(), &init_msg, &env, &info);
+    assert_eq!(1, res.messages.len());
+
+    let reply_msg = reply_msg();
+    let res = reply(deps.as_mut(), env.clone(), reply_msg).unwrap();
+    assert_eq!(res.messages.len(), 0);
+
+    let deposit_info = mock_info(TEST_DEPOSITOR, &coins(100000, "ibc/uosmo"));
+    let deposit_msg = ExecuteMsg::Bond {
+        recipient: Option::None,
+    };
+    let res = execute(deps.as_mut(), env.clone(), deposit_info, deposit_msg).unwrap();
+    assert_eq!(res.messages.len(), 4);
+    assert_eq!(res.attributes.first().unwrap().value, "1");
+    println!("{:?}", res);
+
+    // in this scenario we expect 1000/1000 * 100 = 100 shares back from each primitive
+    let primitive_1_info = mock_info("quasar123", &[]);
+    let primitive_1_msg = ExecuteMsg::BondResponse(BondResponse {
+        share_amount: 100u128.into(),
+        bond_id: "1".to_string(),
+    });
+    let p1_res = execute(
+        deps.as_mut(),
+        env.clone(),
+        primitive_1_info,
+        primitive_1_msg,
+    )
+    .unwrap();
+    assert_eq!(p1_res.messages.len(), 0);
+
+    // update the primitive balance
+    deps.querier.update_state(
+        "quasar123",
+        Some(Uint128::new(200)),
+        Some(Uint128::new(200)),
+    );
+
+    let primitive_2_info = mock_info("quasar124", &[]);
+    let primitive_2_msg = ExecuteMsg::BondResponse(BondResponse {
+        share_amount: 100u128.into(),
+        bond_id: "1".to_string(),
+    });
+    let p2_res = execute(
+        deps.as_mut(),
+        env.clone(),
+        primitive_2_info,
+        primitive_2_msg,
+    )
+    .unwrap();
+    assert_eq!(p2_res.messages.len(), 0);
+
+    // update the primitive balance
+    deps.querier.update_state(
+        "quasar124",
+        Some(Uint128::new(200)),
+        Some(Uint128::new(200)),
+    );
+
+    let primitive_3_info = mock_info("quasar125", &[]);
+    let primitive_3_msg = ExecuteMsg::BondResponse(BondResponse {
+        share_amount: 100u128.into(),
+        bond_id: "1".to_string(),
+    });
+    let p3_res = execute(
+        deps.as_mut(),
+        env.clone(),
+        primitive_3_info,
+        primitive_3_msg,
+    )
+    .unwrap();
+    assert_eq!(p3_res.messages.len(), 1);
+
+    // update the primitive balance
+    deps.querier.update_state(
+        "quasar125",
+        Some(Uint128::new(200)),
+        Some(Uint128::new(200)),
+    );
+
+    let balance_query = crate::msg::QueryMsg::Balance {
+        address: TEST_DEPOSITOR.to_string(),
+    };
+    let balance_res = query(deps.as_ref(), env.clone(), balance_query).unwrap();
+    let balance: BalanceResponse = from_binary(&balance_res).unwrap();
+
+    assert_eq!(balance.balance, Uint128::from(300u128));
+
+    // start unbond
+    let unbond_info = mock_info(TEST_DEPOSITOR, &[]);
+    let unbond_msg = ExecuteMsg::Unbond {
+        amount: Option::Some(balance.balance),
+    };
+    let unbond_res = execute(deps.as_mut(), env.clone(), unbond_info, unbond_msg).unwrap();
+    assert_eq!(unbond_res.messages.len(), 4);
+    assert_eq!(unbond_res.attributes[2].key, "burnt");
+    assert_eq!(unbond_res.attributes[2].value, "300");
+    assert_eq!(unbond_res.attributes[3].key, "bond_id");
+    assert_eq!(unbond_res.attributes[3].value, "2");
 }
 
 #[test]

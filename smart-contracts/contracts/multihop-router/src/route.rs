@@ -226,21 +226,21 @@ impl KeyDeserialize for RouteId {
     }
 }
 
-impl<'a> PrimaryKey<'a> for &RouteId {
-    type Prefix = Destination;
+// impl<'a> PrimaryKey<'a> for &RouteId {
+//     type Prefix = Destination;
 
-    type SubPrefix = ();
+//     type SubPrefix = ();
 
-    type Suffix = String;
+//     type Suffix = String;
 
-    type SuperSuffix = (Destination, String);
+//     type SuperSuffix = (Destination, String);
 
-    fn key(&self) -> Vec<Key> {
-        let mut keys = self.destination.key();
-        keys.extend(self.asset.key());
-        keys
-    }
-}
+//     fn key(&self) -> Vec<Key> {
+//         let mut keys = self.destination.key();
+//         keys.extend(self.asset.key());
+//         keys
+//     }
+// }
 
 impl KeyDeserialize for &RouteId {
     type Output = RouteId;
@@ -323,16 +323,16 @@ impl KeyDeserialize for Destination {
     }
 }
 
-impl<'a> PrimaryKey<'a> for &Destination {
-    type Prefix = ();
-    type SubPrefix = ();
-    type Suffix = Self;
-    type SuperSuffix = Self;
+// impl<'a> PrimaryKey<'a> for &Destination {
+//     type Prefix = ();
+//     type SubPrefix = ();
+//     type Suffix = Self;
+//     type SuperSuffix = Self;
 
-    fn key(&self) -> Vec<cw_storage_plus::Key> {
-        self.0.key()
-    }
-}
+//     fn key(&self) -> Vec<cw_storage_plus::Key> {
+//         self.0.key()
+//     }
+// }
 
 impl KeyDeserialize for &Destination {
     type Output = Destination;

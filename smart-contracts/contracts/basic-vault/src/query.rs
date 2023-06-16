@@ -58,7 +58,7 @@ pub fn query_investment(deps: Deps) -> StdResult<InvestmentResponse> {
 pub fn query_deposit_ratio(deps: Deps, funds: Vec<Coin>) -> StdResult<DepositRatioResponse> {
     let invest = INVESTMENT.load(deps.storage)?;
 
-    let (primitive_funding_amounts, remainder) = may_pay_with_ratio(&deps, &funds, invest).unwrap();
+    let (primitive_funding_amounts, remainder) = may_pay_with_ratio(deps, &funds, invest).unwrap();
 
     let res = DepositRatioResponse {
         primitive_funding_amounts,
