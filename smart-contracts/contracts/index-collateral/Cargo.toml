@@ -50,7 +50,7 @@ serde = { version = "1.0.145", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.31" }
 multihop-router = { path = "../multihop-router"}
 swaprouter = {path = "../../osmosis-contracts/contracts/swaprouter", features = ["imported"]}
-
+cw-utils = "1.0.1"
 
 
 [dev-dependencies]

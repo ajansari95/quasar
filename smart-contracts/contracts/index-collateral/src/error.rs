@@ -1,4 +1,5 @@
 use cosmwasm_std::{OverflowError, StdError};
+use cw_utils::PaymentError;
 use thiserror::Error;
 
 use multihop_router::ContractError as RouterError;
@@ -16,4 +17,7 @@ pub enum ContractError {
 
     #[error("{0}")]
     OverflowError(#[from] OverflowError),
+
+    #[error("{0}")]
+    PaymentError(#[from] PaymentError),
 }

@@ -4,18 +4,24 @@ use cosmwasm_std::{
     coin, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
     StdResult, Storage, Uint128,
 };
+use cw_utils::one_coin;
 use multihop_router::contract::handle_get_route;
 use multihop_router::route::RouteId;
 // use cw2::set_contract_version;
 
+use crate::assets::UsedAssets;
 use crate::error::ContractError;
+use crate::execute::swap::batch_swap;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ASSETS, BONDING_FUNDS};
+use crate::state::{ASSETS, BONDING_FUNDS, SWAP_CONFIG, USED_ASSETS};
 
-pub(crate) fn execute_deposit(coins: Vec<Coin>) -> Result<Response, ContractError> {
+pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
+    let coin = one_coin(&info)?;
+    let assets = UsedAssets::from_state(deps.storage, USED_ASSETS)?;
     // the complete flow works like this:
     // swap the tokens to our desired format, after swapping, the rest of the steps have to be called in the reply
-
+    let swap_conf = SWAP_CONFIG.load(deps.storage)?;
+    let swap_executes = batch_swap(swap_conf, coin, assets);
     todo!()
 }
 
