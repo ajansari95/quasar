@@ -1,5 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128, Coin};
+
 use cw_storage_plus::Map;
 use multihop_router::route::Destination;
 
@@ -24,7 +25,6 @@ impl UsedAssets {
     pub fn into_assets(self) -> Vec<AssetInfo> {
         self.assets
     }
-
     pub fn from_state(
         storage: &mut dyn Storage,
         map: Map<&str, AssetInfo>,
