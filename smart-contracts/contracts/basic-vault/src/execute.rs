@@ -485,7 +485,7 @@ pub fn do_start_unbond(
                 ("bond_id", &bond_seq.to_string()),
                 ("shares_burned", &unbond_amount.to_string()),
                 ("new_total_suply", &supply.issued.to_string()),
-                ("data", &"".to_string()),
+                ("data", ""),
             ]),
     ))
 }
@@ -553,7 +553,7 @@ pub fn do_unbond(
                         ("recipient", &info.sender.to_string()),
                         ("unbond_ids_and_addresses", &format!("{:?}", id_addr)),
                         ("total_shares_amount", &shares_to_claim.to_string()),
-                        ("data", &"".to_string()),
+                        ("data", ""),
                     ]),
             ))
         }
