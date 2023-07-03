@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, BankMsg, Coin, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Timestamp, Uint128,
+    Addr, BankMsg, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Timestamp, Uint128,
 };
 use cw20_base::contract::execute_mint;
 use quasar_types::callback::{BondResponse, UnbondResponse};
@@ -8,9 +8,8 @@ use crate::{
     helpers::update_user_reward_index,
     state::{
         Unbond, BONDING_SEQ_TO_ADDR, BOND_STATE, DEBUG_TOOL, INVESTMENT, PENDING_BOND_IDS,
-        PENDING_UNBOND_IDS, TOTAL_SUPPLY, UNBOND_STATE,
+        PENDING_UNBOND_IDS, UNBOND_STATE,
     },
-    types::FromUint128,
     ContractError,
 };
 
@@ -28,6 +27,7 @@ pub fn on_bond(
 
     // load investment info
     let invest = INVESTMENT.load(deps.storage)?;
+
     let mut bond_stubs = BOND_STATE.load(deps.storage, bond_id.clone())?;
 
     // lets find the primitive for this response
@@ -49,10 +49,19 @@ pub fn on_bond(
     // update deposit state here before doing anything else & save!
     bond_stubs.iter_mut().for_each(|s| {
         if s.address == info.sender {
+            // we should probably return the primitive value in the bond response
+            let primitive_value: lp_strategy::msg::IcaBalanceResponse = deps
+                .querier
+                .query_wasm_smart(
+                    info.sender.clone(),
+                    &lp_strategy::msg::QueryMsg::IcaBalance {},
+                )
+                .unwrap();
             s.bond_response = Some(BondResponse {
                 share_amount,
                 bond_id: bond_id.clone(),
             });
+            s.primitive_value = Some(primitive_value.amount.amount);
         }
     });
 
@@ -100,28 +109,37 @@ pub fn on_bond(
 
     BOND_STATE.save(deps.storage, bond_id.clone(), &bond_stubs)?;
 
-    // calculate shares to mint
-    let shares_to_mint = bond_stubs.iter().zip(invest.primitives.iter()).try_fold(
+    // calculate the shares to mint by value
+    // at the time of bonding, we want to figure out what percentage of value in the vault the user has
+
+    // User value per primitive = BondResponse Primitive Shares / Total Primitive Shares  * ICA_BALANCE or funds send in the bond
+    // Total Vault Value = Total Vault shares in Primitive / Total Primitive shares * ICA_BALANCE
+    let total_vault_value = bond_stubs.iter().try_fold(
         Uint128::zero(),
-        |acc, (s, _pc)| -> Result<Uint128, ContractError> {
-            Ok(acc.checked_add(
-                // omfg pls dont look at this code, i will make it cleaner -> cleaner but still ugly :D
-                Decimal::from_uint128(
-                    s.bond_response
-                        .as_ref()
-                        .ok_or(ContractError::BondResponseIsEmpty {})?
-                        .share_amount,
-                )
-                .to_uint_floor(),
-            )?)
+        |acc, stub| -> Result<Uint128, ContractError> {
+            Ok(acc
+                + stub
+                    .primitive_value
+                    .ok_or(ContractError::BondResponseIsEmpty {})?)
         },
     )?;
 
-    // update total supply
-    let mut supply = TOTAL_SUPPLY.load(deps.storage)?;
+    // User Vault Shares =  Sum(user value per primitive) / Total Vault value * Total Vault Shares
+    let total_user_value = bond_stubs
+        .iter()
+        .fold(Uint128::zero(), |acc, stub| acc + stub.amount);
 
-    supply.issued += shares_to_mint;
-    TOTAL_SUPPLY.save(deps.storage, &supply)?;
+    let token_info = cw20_base::contract::query_token_info(deps.as_ref())?;
+    // equal to the cw20 base total supply
+    let total_vault_shares: Uint128 = token_info.total_supply;
+
+    //if either is zero, then we just mint the user value
+    let shares_to_mint = if total_vault_shares.is_zero() || total_vault_value.is_zero() {
+        total_user_value
+    } else {
+        total_user_value
+            .checked_multiply_ratio(total_vault_shares, total_vault_value - total_user_value)?
+    };
 
     // call into cw20-base to mint the token, call as self as no one else is allowed
     let sub_info = MessageInfo {
@@ -227,7 +245,6 @@ pub fn on_unbond(
     unbonding_stub.unbond_funds = info.funds;
 
     UNBOND_STATE.save(deps.storage, unbond_id.clone(), &unbond_stubs)?;
-    let user_address = BONDING_SEQ_TO_ADDR.load(deps.storage, unbond_id.clone())?;
 
     // if still waiting on successful unbonds, then return
     // todo: should we eagerly send back funds?
@@ -305,6 +322,7 @@ mod test {
 
     use crate::multitest::common::PrimitiveInstantiateMsg;
     use crate::state::{BondingStub, BONDING_SEQ_TO_ADDR, BOND_STATE};
+    use crate::tests::mock_deps_with_primitives;
     use crate::{
         callback::on_bond,
         msg::PrimitiveConfig,
@@ -312,15 +330,30 @@ mod test {
         state::{InvestmentInfo, INVESTMENT},
         ContractError,
     };
-    use cosmwasm_std::Addr;
     use cosmwasm_std::{
-        testing::{mock_dependencies, mock_env, mock_info},
+        testing::{mock_env, mock_info},
         Decimal,
     };
+    use cosmwasm_std::{Addr, Uint128};
 
     #[test]
     fn fail_if_duplicate_bond_id() {
-        let mut deps = mock_dependencies();
+        let primitive_states = vec![
+            (
+                "addr00001".to_string(),
+                LOCAL_DENOM.to_string(),
+                Uint128::from(100u128),
+                Uint128::from(100u128),
+            ),
+            (
+                "addr00002".to_string(),
+                LOCAL_DENOM.to_string(),
+                Uint128::from(200u128),
+                Uint128::from(400u128),
+            ),
+        ];
+        // mock the queries so the primitives exist
+        let mut deps = mock_deps_with_primitives(primitive_states);
         let env = mock_env();
         let info = mock_info("addr00001", &[]);
 
@@ -362,6 +395,7 @@ mod test {
                     ],
                     owner: Addr::unchecked("owner".to_string()),
                     min_withdrawal: 1u128.into(),
+                    deposit_denom: LOCAL_DENOM.to_string(),
                 },
             )
             .unwrap();
@@ -377,10 +411,14 @@ mod test {
                     BondingStub {
                         address: "addr00001".to_string(),
                         bond_response: None,
+                        primitive_value: None,
+                        amount: Uint128::one(),
                     },
                     BondingStub {
                         address: "addr00002".to_string(),
                         bond_response: None,
+                        primitive_value: None,
+                        amount: Uint128::one(),
                     },
                 ],
             )

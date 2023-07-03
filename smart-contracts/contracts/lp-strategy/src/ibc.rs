@@ -13,12 +13,13 @@ use crate::ibc_util::{
 use crate::icq::calc_total_balance;
 use crate::start_unbond::{batch_start_unbond, handle_start_unbond_ack};
 use crate::state::{
-    LpCache, PendingBond, BOND_QUEUE, CHANNELS, CONFIG, IBC_LOCK, IBC_TIMEOUT_TIME, ICA_CHANNEL,
-    ICQ_CHANNEL, LP_SHARES, OSMO_LOCK, PENDING_ACK, RECOVERY_ACK, SIMULATED_EXIT_RESULT,
-    SIMULATED_JOIN_RESULT, TIMED_OUT, TOTAL_VAULT_BALANCE, TRAPS,
+    LpCache, OngoingDeposit, PendingBond, BOND_QUEUE, CHANNELS, CONFIG, IBC_LOCK, IBC_TIMEOUT_TIME, ICA_CHANNEL, ICQ_CHANNEL,
+    LP_SHARES, OSMO_LOCK, PENDING_ACK, RECOVERY_ACK, REJOIN_QUEUE, SIMULATED_EXIT_RESULT, SIMULATED_JOIN_RESULT,
+    TIMED_OUT, TOTAL_VAULT_BALANCE, TRAPS,
 };
 use crate::unbond::{batch_unbond, transfer_batch_unbond, PendingReturningUnbonds};
 use cosmos_sdk_proto::cosmos::bank::v1beta1::QueryBalanceResponse;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 
@@ -43,10 +44,10 @@ use quasar_types::icq::{CosmosResponse, InterchainQueryPacketAck, ICQ_ORDERING};
 use quasar_types::{ibc, ica::handshake::IcaMetadata, icq::ICQ_VERSION};
 
 use cosmwasm_std::{
-    attr, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, DepsMut, Env, IbcBasicResponse,
-    IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, IbcTimeout, QuerierWrapper,
-    Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
+    attr, from_binary, to_binary, Attribute, Binary, Coin, CosmosMsg, Decimal, DepsMut, Env,
+    IbcBasicResponse, IbcChannel, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, IbcTimeout,
+    QuerierWrapper, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
 };
 
 /// enforces ordering and versioning constraints, this combines ChanOpenInit and ChanOpenTry
@@ -60,7 +61,7 @@ pub fn ibc_channel_open(
     if msg.channel().version == ICQ_VERSION {
         handle_icq_channel(deps, msg.channel().clone())?;
     } else {
-        handle_ica_channel(deps, msg.channel().clone())?;
+        handle_ica_channel(deps, msg)?;
     }
     Ok(())
 }
@@ -89,7 +90,8 @@ fn handle_icq_channel(deps: DepsMut, channel: IbcChannel) -> Result<(), Contract
     Ok(())
 }
 
-fn handle_ica_channel(deps: DepsMut, channel: IbcChannel) -> Result<(), ContractError> {
+fn handle_ica_channel(deps: DepsMut, msg: IbcChannelOpenMsg) -> Result<(), ContractError> {
+    let channel = msg.channel().clone();
     let metadata: IcaMetadata = serde_json_wasm::from_str(&channel.version).map_err(|error| {
         QError::InvalidIcaMetadata {
             raw_metadata: channel.version.clone(),
@@ -112,20 +114,31 @@ fn handle_ica_channel(deps: DepsMut, channel: IbcChannel) -> Result<(), Contract
     if config.expected_connection != channel.connection_id {
         return Err(ContractError::IncorrectConnection);
     }
-
-    // save the current state of the initializing channel
-    let info = ChannelInfo {
-        id: channel.endpoint.channel_id.clone(),
-        counterparty_endpoint: channel.counterparty_endpoint,
-        connection_id: channel.connection_id,
-        channel_type: ChannelType::Ica {
-            channel_ty: metadata,
-            counter_party_address: None,
-        },
-        handshake_state: HandshakeState::Init,
-    };
-    CHANNELS.save(deps.storage, channel.endpoint.channel_id, &info)?;
-    Ok(())
+    // validate that the message is an OpenInit message and not an OpenTry, such that we don't pollute the channel map
+    // if let IbcChannelOpenMsg::OpenInit(s) = msg {
+    //     return Err(ContractError::InvalidOrder);
+    // }
+    match msg {
+        IbcChannelOpenMsg::OpenInit { channel } => {
+            // save the current state of the initializing channel
+            let info = ChannelInfo {
+                id: channel.endpoint.channel_id.clone(),
+                counterparty_endpoint: channel.counterparty_endpoint,
+                connection_id: channel.connection_id,
+                channel_type: ChannelType::Ica {
+                    channel_ty: metadata,
+                    counter_party_address: None,
+                },
+                handshake_state: HandshakeState::Init,
+            };
+            CHANNELS.save(deps.storage, channel.endpoint.channel_id, &info)?;
+            Ok(())
+        }
+        IbcChannelOpenMsg::OpenTry {
+            channel: _,
+            counterparty_version: _,
+        } => Err(ContractError::IncorrectChannelOpenType),
+    }
 }
 
 /// record the channel in CHANNEL_INFO, this combines the ChanOpenAck and ChanOpenConfirm steps
@@ -290,14 +303,28 @@ pub fn handle_transfer_ack(
     env: Env,
     _ack_bin: Binary,
     _pkt: &IbcPacketAckMsg,
-    pending: PendingBond,
-    total_amount: Uint128,
+    mut pending: PendingBond,
+    transferred_amount: Uint128,
 ) -> Result<Response, ContractError> {
     // once the ibc transfer to the ICA account has succeeded, we send the join pool message
     // we need to save and fetch
     let config = CONFIG.load(storage)?;
 
     let share_out_min_amount = calculate_share_out_min_amount(storage)?;
+
+    let failed_bonds_amount = REJOIN_QUEUE.iter(storage)?.try_fold(
+        Uint128::zero(),
+        |acc, val| -> Result<Uint128, ContractError> {
+            match val?.raw_amount {
+                crate::state::RawAmount::LocalDenom(amount) => Ok(amount + acc),
+                crate::state::RawAmount::LpShares(_) => Err(ContractError::IncorrectRawAmount),
+            }
+        },
+    )?;
+    let total_amount = transferred_amount + failed_bonds_amount;
+
+    let pending_rejoins: StdResult<Vec<OngoingDeposit>> = REJOIN_QUEUE.iter(storage)?.collect();
+    pending.bonds.append(&mut pending_rejoins?);
 
     let msg = do_ibc_join_pool_swap_extern_amount_in(
         storage,
@@ -329,14 +356,16 @@ pub fn handle_icq_ack(
     channel: &String,
 ) -> Result<Response, ContractError> {
     // todo: query flows should be separated by which flowType we're doing (bond, unbond, startunbond)
-    let ack: InterchainQueryPacketAck = from_binary(&ack_bin)?;
 
+    let ack: InterchainQueryPacketAck = from_binary(&ack_bin)?;
     let resp: CosmosResponse = CosmosResponse::decode(ack.data.0.as_ref())?;
+
     // we have only dispatched on query and a single kind at this point
     let raw_balance = QueryBalanceResponse::decode(resp.responses[0].value.as_ref())?
         .balance
         .ok_or(ContractError::BaseDenomNotFound)?
         .amount;
+
     let base_balance =
         Uint128::new(
             raw_balance
@@ -360,9 +389,12 @@ pub fn handle_icq_ack(
         .balance
         .ok_or(ContractError::BaseDenomNotFound)?
         .amount;
+
     let join_pool = QueryCalcJoinPoolSharesResponse::decode(resp.responses[3].value.as_ref())?;
+
     let exit_pool =
         QueryCalcExitPoolCoinsFromSharesResponse::decode(resp.responses[4].value.as_ref())?;
+
     let spot_price = QuerySpotPriceResponse::decode(resp.responses[5].value.as_ref())?.spot_price;
     let lock = LockedResponse::decode(resp.responses[6].value.as_ref())?.lock;
     // parse the locked lp shares on Osmosis, a bit messy
@@ -815,9 +847,12 @@ mod tests {
                     lock_period: 100,
                     pool_id: 1,
                     pool_denom: "gamm/pool/1".to_string(),
-                    base_denom: "uosmo".to_string(),
-                    quote_denom:
-                        "ibc/D176154B0C63D1F9C6DCFB4F70349EBF2E2B5A87A05902F57A6AE92B863E9AEC"
+                    base_denom:
+                        "ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2"
+                            .to_string(),
+                    quote_denom: "uosmo".to_string(),
+                    local_denom:
+                        "ibc/FA0006F056DB6719B8C16C551FC392B62F5729978FC0B125AC9A432DBB2AA1A5"
                             .to_string(),
                     local_denom: "ibc/local_osmo".to_string(),
                     transfer_channel: "channel-0".to_string(),
@@ -841,7 +876,7 @@ mod tests {
             .unwrap();
 
         // base64 of '{"data":"Chs6FAoSCgV1b3NtbxIJMTkyODcwODgySNW/pQQKUjpLCkkKRGliYy8yNzM5NEZCMDkyRDJFQ0NENTYxMjNDNzRGMzZFNEMxRjkyNjAwMUNFQURBOUNBOTdFQTYyMkIyNUY0MUU1RUIyEgEwSNW/pQQKGToSChAKC2dhbW0vcG9vbC8xEgEwSNW/pQQKFjoPCgEwEgoKBXVvc21vEgEwSNW/pQQKcTpqClIKRGliYy8yNzM5NEZCMDkyRDJFQ0NENTYxMjNDNzRGMzZFNEMxRjkyNjAwMUNFQURBOUNBOTdFQTYyMkIyNUY0MUU1RUIyEgoxMDg5ODQ5Nzk5ChQKBXVvc21vEgsxNTQyOTM2Mzg2MEjVv6UECh06FgoUMC4wNzA2MzQ3ODUwMDAwMDAwMDBI1b+lBAqMATqEAQqBAQj7u2ISP29zbW8xd212ZXpscHNrNDB6M3pmc3l5ZXgwY2Q4ZHN1bTdnenVweDJxZzRoMHVhdms3dHh3NHNlcXE3MmZrbRoECIrqSSILCICSuMOY/v///wEqJwoLZ2FtbS9wb29sLzESGDEwODE3NDg0NTgwODQ4MDkyOTUyMDU1MUjVv6UE"}'
-        let ack_bin = Binary::from_base64("eyJkYXRhIjoiQ2hzNkZBb1NDZ1YxYjNOdGJ4SUpNVGM1TVRjME5EYzNTTlcvcFFRS1VqcExDa2tLUkdsaVl5OUVNVGMyTVRVMFFqQkROak5FTVVZNVF6WkVRMFpDTkVZM01ETTBPVVZDUmpKRk1rSTFRVGczUVRBMU9UQXlSalUzUVRaQlJUa3lRamcyTTBVNVFVVkRFZ0V3U05XL3BRUUtHem9VQ2hJS0RXZGhiVzB2Y0c5dmJDODRNek1TQVRCSTFiK2xCQW9IQ0JKSTFiK2xCQXB6T213S1V3cEVhV0pqTDBReE56WXhOVFJDTUVNMk0wUXhSamxETmtSRFJrSTBSamN3TXpRNVJVSkdNa1V5UWpWQk9EZEJNRFU1TURKR05UZEJOa0ZGT1RKQ09EWXpSVGxCUlVNU0N6azBNRFl3TWpNMU1UY3hDaFVLQlhWdmMyMXZFZ3d4TWpNNE9EUTJNRGN6TVRCSTFiK2xCQW9kT2hZS0ZEQXVPVEl4TlRrNU9ESXdNREF3TURBd01EQXdTTlcvcFFRS2l3RTZnd0VLZ0FFSS9MdGlFajl2YzIxdk1YQnpjMlo2Y0Roa05tZzFjR3R6Wm5sak5tdzFNamRtYUdkMlpHcGpOVE0zZFhWbmRIQm5NbVUwZDI1M1pIRjFlWFpxWVhGa2MyaHdZV2dhQkFpSzZra2lDd2lBa3JqRG1QNy8vLzhCS2lZS0RXZGhiVzB2Y0c5dmJDODRNek1TRlRFMk1qQXhOVFU0T1RjM01ERXpNems0TURRM01ralZ2NlVFIn0").unwrap();
+        let ack_bin = Binary::from_base64("eyJkYXRhIjoiQ2xnNlVRcFBDa1JwWW1Ndk1qY3pPVFJHUWpBNU1rUXlSVU5EUkRVMk1USXpRemMwUmpNMlJUUkRNVVk1TWpZd01ERkRSVUZFUVRsRFFUazNSVUUyTWpKQ01qVkdOREZGTlVWQ01oSUhNalV3TURBd01FaUdydk1FQ2hNNkRBb0tDZ1YxYjNOdGJ4SUJNRWlHcnZNRUNoazZFZ29RQ2d0bllXMXRMM0J2YjJ3dk1SSUJNRWlHcnZNRUNtMDZaZ29VTWpneU5EWTVOVE0yTnpFek9EQXpNems1T1RnU1RncEVhV0pqTHpJM016azBSa0l3T1RKRU1rVkRRMFExTmpFeU0wTTNORVl6TmtVMFF6RkdPVEkyTURBeFEwVkJSRUU1UTBFNU4wVkJOakl5UWpJMVJqUXhSVFZGUWpJU0JqVXdNREF3TUVpR3J2TUVDbkE2YVFwUkNrUnBZbU12TWpjek9UUkdRakE1TWtReVJVTkRSRFUyTVRJelF6YzBSak0yUlRSRE1VWTVNall3TURGRFJVRkVRVGxEUVRrM1JVRTJNakpDTWpWR05ERkZOVVZDTWhJSk5qTTJNell6TVRJMkNoUUtCWFZ2YzIxdkVnc3hNVGd4TXpnek5ESXdNVWlHcnZNRUNoNDZGd29WTVRndU5UWTBOakV4TkRnd01EQXdNREF3TURBd1NJYXU4d1FLaXdFNmd3RUtnQUVJNWZWa0VqOXZjMjF2TVhWNU5XRnlNSGxoYXpseU4zZ3pjMmRuWkRkbmMyNXlhbTEwYTNjeWRqWmxkRGgxZUhKeGF6TnRObkJvTkdaMWNYYzVaSEUyYTJGNmJYTWFCQWlCNmtraUN3aUFrcmpEbVA3Ly8vOEJLaVlLQzJkaGJXMHZjRzl2YkM4eEVoYzNNVGszTXpJMU56QTJOVGcwTnprek56QXpPVFV6TlVpR3J2TUUifQ==").unwrap();
         // queues are empty at this point so we just expect a succesful response without anyhting else
         handle_icq_ack(
             deps.as_mut().storage,
@@ -876,7 +911,11 @@ mod tests {
             "connection-0".to_string(),
         );
 
-        handle_ica_channel(deps.as_mut(), channel.clone()).unwrap();
+        let msg = IbcChannelOpenMsg::OpenInit {
+            channel: channel.clone(),
+        };
+
+        handle_ica_channel(deps.as_mut(), msg.clone()).unwrap();
 
         let expected = ChannelInfo {
             id: channel.endpoint.channel_id.clone(),
@@ -897,6 +936,38 @@ mod tests {
                 .unwrap(),
             expected
         )
+    }
+
+    #[test]
+    fn handle_ica_channel_open_try_errors() {
+        let mut deps = mock_dependencies();
+        default_setup(deps.as_mut().storage).unwrap();
+
+        let endpoint = IbcEndpoint {
+            port_id: "wasm.my_addr".to_string(),
+            channel_id: "channel-1".to_string(),
+        };
+        let counterparty_endpoint = IbcEndpoint {
+            port_id: "icahost".to_string(),
+            channel_id: "channel-2".to_string(),
+        };
+
+        let version = r#"{"version":"ics27-1","encoding":"proto3","tx_type":"sdk_multi_msg","controller_connection_id":"connection-0","host_connection_id":"connection-0"}"#.to_string();
+        let channel = IbcChannel::new(
+            endpoint,
+            counterparty_endpoint.clone(),
+            IbcOrder::Ordered,
+            version,
+            "connection-0".to_string(),
+        );
+
+        let msg = IbcChannelOpenMsg::OpenTry {
+            channel: channel.clone(),
+            counterparty_version: "1".to_string(),
+        };
+
+        let err = handle_ica_channel(deps.as_mut(), msg.clone()).unwrap_err();
+        assert_eq!(err, ContractError::IncorrectChannelOpenType);
     }
 
     #[test]

@@ -27,6 +27,8 @@ pub struct InvestmentInfo {
     /// This is the minimum amount we will pull out to reinvest, as well as a minimum
     /// that can be unbonded (to avoid needless staking tx)
     pub min_withdrawal: Uint128,
+    /// the denom accepted by the vault
+    pub deposit_denom: String,
     /// this is the array of primitives that this vault will subscribe to
     pub primitives: Vec<PrimitiveConfig>,
 }
@@ -70,14 +72,6 @@ impl Cap {
     }
 }
 
-/// Supply is dynamic and tracks the current supply of staked and ERC20 tokens.
-#[cw_serde]
-#[derive(Default)]
-pub struct Supply {
-    /// issued is how many derivative tokens this contract has issued
-    pub issued: Uint128,
-}
-
 #[cw_serde]
 pub struct AdditionalTokenInfo {
     pub thesis: String,
@@ -85,8 +79,20 @@ pub struct AdditionalTokenInfo {
 }
 
 pub const ADDITIONAL_TOKEN_INFO: Item<AdditionalTokenInfo> = Item::new("additional_token_info");
-pub const INVESTMENT: Item<InvestmentInfo> = Item::new("invest");
-pub const TOTAL_SUPPLY: Item<Supply> = Item::new("total_supply");
+pub const OLD_INVESTMENT: Item<OldInvestmentInfo> = Item::new("invest");
+pub const INVESTMENT: Item<InvestmentInfo> = Item::new("new_invest");
+
+/// OldInvestmentInfo is a premigration version without the single_denom
+#[cw_serde]
+pub struct OldInvestmentInfo {
+    /// Owner created the contract and takes a cut
+    pub owner: Addr,
+    /// This is the minimum amount we will pull out to reinvest, as well as a minimum
+    /// that can be unbonded (to avoid needless staking tx)
+    pub min_withdrawal: Uint128,
+    /// this is the array of primitives that this vault will subscribe to
+    pub primitives: Vec<PrimitiveConfig>,
+}
 
 #[cw_serde]
 #[derive(Default)]
@@ -95,6 +101,10 @@ pub struct BondingStub {
     pub address: String,
     // the response of the primitive upon successful bond or error
     pub bond_response: Option<BondResponse>,
+    // primitive value at the time of receiving the bond_response
+    pub primitive_value: Option<Uint128>,
+    // the amount sent with the Bond
+    pub amount: Uint128,
 }
 
 #[cw_serde]
@@ -176,6 +186,7 @@ mod tests {
                 };
                 4
             ],
+            deposit_denom: "ibc/osmo".to_string(),
         };
         invest.normalize_primitive_weights();
         assert_eq!(invest.primitives[0].weight, Decimal::percent(25));

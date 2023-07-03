@@ -1,8 +1,9 @@
+use cosmwasm_schema::cw_serde;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult,
-    SubMsg, SubMsgResult, Uint128, WasmMsg,
+    to_binary, Attribute, Binary, Deps, DepsMut, Env, MessageInfo, Order, Reply, Response,
+    StdError, StdResult, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -11,9 +12,10 @@ use cw20_base::allowances::{
     execute_transfer_from, query_allowance,
 };
 use cw20_base::contract::{
-    execute_burn, execute_send, execute_transfer, query_balance, query_token_info,
+    execute_burn, execute_mint, execute_send, execute_transfer, query_balance, query_token_info,
 };
 use cw20_base::state::{MinterData, TokenInfo, TOKEN_INFO};
+use cw_storage_plus::Item;
 use cw_utils::parse_instantiate_response_data;
 use lp_strategy::msg::ConfigResponse;
 use vault_rewards::msg::InstantiateMsg as VaultRewardsInstantiateMsg;
@@ -31,8 +33,9 @@ use crate::query::{
     query_pending_unbonds, query_pending_unbonds_by_id, query_tvl_info,
 };
 use crate::state::{
-    AdditionalTokenInfo, Cap, InvestmentInfo, Supply, ADDITIONAL_TOKEN_INFO, BONDING_SEQ, CAP,
-    CLAIMS, CONTRACT_NAME, CONTRACT_VERSION, DEBUG_TOOL, INVESTMENT, TOTAL_SUPPLY, VAULT_REWARDS,
+    AdditionalTokenInfo, Cap, InvestmentInfo, ADDITIONAL_TOKEN_INFO, BONDING_SEQ,
+    BONDING_SEQ_TO_ADDR, BOND_STATE, CAP, CLAIMS, CONTRACT_NAME, CONTRACT_VERSION, DEBUG_TOOL,
+    INVESTMENT, VAULT_REWARDS,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -91,16 +94,13 @@ pub fn instantiate(
         owner: info.sender.clone(),
         min_withdrawal: msg.min_withdrawal,
         primitives: msg.primitives,
+        deposit_denom: msg.deposit_denom,
     };
     invest.normalize_primitive_weights();
     INVESTMENT.save(deps.storage, &invest)?;
 
     // initialize bonding sequence num
     BONDING_SEQ.save(deps.storage, &Uint128::one())?;
-
-    // set supply to 0
-    let supply = Supply::default();
-    TOTAL_SUPPLY.save(deps.storage, &supply)?;
 
     DEBUG_TOOL.save(deps.storage, &"Empty".to_string())?;
 
@@ -361,12 +361,75 @@ pub fn query_debug_string(deps: Deps) -> StdResult<GetDebugResponse> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    // do nothing
+pub fn migrate(mut deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    /// Supply is dynamic and tracks the current supply of staked and ERC20 tokens.
+    #[cw_serde]
+    #[derive(Default)]
+    pub struct Supply {
+        /// issued is how many derivative tokens this contract has issued
+        pub issued: Uint128,
+    }
 
-    Ok(Response::new()
-        .add_attribute("migrate", CONTRACT_NAME)
-        .add_attribute("success", "true"))
+    let delete_supply: Item<Uint128> = Item::new("total_supply");
+    delete_supply.remove(deps.storage);
+
+    // wipe the current share state
+    cw20_base::state::BALANCES.clear(deps.storage);
+    cw20_base::state::TOKEN_INFO.update(
+        deps.storage,
+        |old| -> Result<TokenInfo, ContractError> {
+            Ok(cw20_base::state::TokenInfo {
+                name: old.name,
+                symbol: old.symbol,
+                decimals: old.decimals,
+                total_supply: Uint128::zero(),
+                mint: old.mint,
+            })
+        },
+    )?;
+
+    let mut attributes = vec![
+        Attribute::new("migrate", CONTRACT_NAME),
+        Attribute::new("success", "true"),
+    ];
+
+    // this migrate message has to be applied after the fix to the lp strategy
+    let states: Vec<_> = BOND_STATE
+        .range(deps.storage, None, None, Order::Ascending)
+        .collect();
+    states
+        .into_iter()
+        .try_for_each(|res| -> Result<(), ContractError> {
+            let stub = res?;
+
+            // mint the new shares, add attributes to the response
+            let sub_info = MessageInfo {
+                sender: env.contract.address.clone(),
+                funds: vec![],
+            };
+
+            let bond_id = stub.0;
+            let recipient = BONDING_SEQ_TO_ADDR.load(deps.storage, bond_id)?;
+
+            let amount = stub
+                .1
+                .into_iter()
+                .fold(Uint128::zero(), |acc, stub| acc + stub.amount);
+
+            execute_mint(
+                deps.branch(),
+                env.clone(),
+                sub_info,
+                recipient.clone(),
+                amount,
+            )?;
+
+            attributes.push(Attribute::new("amount", amount.to_string()));
+            attributes.push(Attribute::new("recipient", recipient));
+            Ok(())
+        })?;
+
+    Ok(Response::new().add_attributes(attributes))
 }
 
 #[cfg(test)]
@@ -419,7 +482,7 @@ mod test {
                         lock_period: 300,
                         pool_id: 1,
                         pool_denom: "gamm/pool/2".to_string(),
-                        local_denom: "ibc/OTHER_DENOM".to_string(),
+                        local_denom: "ibc/SOME_DENOM".to_string(),
                         base_denom: "uqsr".to_string(),
                         quote_denom: "uosmo".to_string(),
                         transfer_channel: "channel-0".to_string(),
@@ -434,7 +497,7 @@ mod test {
                         lock_period: 300,
                         pool_id: 1,
                         pool_denom: "gamm/pool/3".to_string(),
-                        local_denom: "ibc/OTHER_OTHER_DENOM".to_string(),
+                        local_denom: "ibc/SOME_DENOM".to_string(),
                         base_denom: "uatom".to_string(),
                         quote_denom: "uqsr".to_string(),
                         transfer_channel: "channel-0".to_string(),
@@ -451,6 +514,7 @@ mod test {
                 amount: Uint128::from(1000u128),
             }],
             total_cap: Uint128::new(10_000_000_000_000),
+            deposit_denom: "ibc/SOME_DENOM".to_string(),
         };
 
         // prepare 3 mock configs for prim1, prim2 and prim3
@@ -483,7 +547,7 @@ mod test {
                                 lock_period: 300,
                                 pool_id: 1,
                                 pool_denom: "gamm/pool/2".to_string(),
-                                local_denom: "ibc/OTHER_DENOM".to_string(),
+                                local_denom: "ibc/SOME_DENOM".to_string(),
                                 base_denom: "uqsr".to_string(),
                                 quote_denom: "uosmo".to_string(),
                                 transfer_channel: "channel-0".to_string(),
@@ -500,7 +564,7 @@ mod test {
                                 lock_period: 300,
                                 pool_id: 1,
                                 pool_denom: "gamm/pool/3".to_string(),
-                                local_denom: "ibc/OTHER_OTHER_DENOM".to_string(),
+                                local_denom: "ibc/SOME_DENOM".to_string(),
                                 base_denom: "uatom".to_string(),
                                 quote_denom: "uqsr".to_string(),
                                 transfer_channel: "channel-0".to_string(),
@@ -558,7 +622,7 @@ mod test {
                     lock_period: 300,
                     pool_id: 1,
                     pool_denom: "gamm/pool/2".to_string(),
-                    local_denom: "ibc/OTHER_DENOM".to_string(),
+                    local_denom: "ibc/SOME_DENOM".to_string(),
                     base_denom: "uqsr".to_string(),
                     quote_denom: "uosmo".to_string(),
                     transfer_channel: "channel-0".to_string(),
@@ -572,6 +636,7 @@ mod test {
             owner: Addr::unchecked("lulu"),
             min_withdrawal: Uint128::from(100u128),
             primitives: primitive_configs,
+            deposit_denom: "ibc/SOME_DENOM".to_string(),
         };
 
         INVESTMENT
