@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    coin, from_binary, to_binary, Attribute, BankMsg, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdError, Uint128, WasmMsg,
+    coin, from_binary, to_binary, Attribute, Coin, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdError, Uint128, WasmMsg,
 };
 
 use cw20::BalanceResponse;
@@ -16,7 +16,7 @@ use crate::helpers::{can_unbond_from_primitive, is_contract_admin, update_user_r
 use crate::msg::PrimitiveConfig;
 use crate::state::{
     BondingStub, Cap, InvestmentInfo, Unbond, UnbondingStub, BONDING_SEQ, BONDING_SEQ_TO_ADDR,
-    BOND_STATE, CAP, INVESTMENT, PENDING_BOND_IDS, PENDING_UNBOND_IDS, UNBOND_STATE,
+    BOND_STATE, CAP, INVESTMENT, PENDING_BOND_IDS, PENDING_UNBOND_IDS, UNBOND_STATE
 };
 use crate::types::FromUint128;
 
@@ -297,8 +297,8 @@ pub fn bond(
         })
         .collect();
 
-    // let (primitive_funding_amounts, remainder) =
-    //     may_pay_with_ratio(&deps.as_ref(), &info.funds, invest.clone())?;
+    let (primitive_funding_amounts, remainder) =
+        may_pay_with_ratio(&deps.as_ref(), &info.funds, invest.clone())?;
 
     // let bond_msgs: Result<Vec<WasmMsg>, ContractError> = invest
     //     .primitives
@@ -339,17 +339,17 @@ pub fn bond(
     )?;
     BONDING_SEQ.save(deps.storage, &bond_seq.checked_add(Uint128::new(1))?)?;
 
-    // let remainder_msg = BankMsg::Send {
-    //     to_address: recipient_addr.to_string(),
-    //     amount: remainder
-    //         .iter()
-    //         .filter(|c| !c.amount.is_zero())
-    //         .map(|r| Coin {
-    //             denom: r.denom.clone(),
-    //             amount: r.amount,
-    //         })
-    //         .collect(),
-    // };
+    let remainder_msg = BankMsg::Send {
+        to_address: recipient_addr.to_string(),
+        amount: remainder
+            .iter()
+            .filter(|c| !c.amount.is_zero())
+            .map(|r| Coin {
+                denom: r.denom.clone(),
+                amount: r.amount,
+            })
+            .collect(),
+    };
 
     let primitive_addresses = format!(
         "['{}']",

@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    Addr, BankMsg, Decimal, DepsMut, Env, MessageInfo, Response, SubMsg, Timestamp, Uint128,
+    Addr, BankMsg, Coin, DepsMut, Env, MessageInfo, Response, SubMsg, Timestamp, Uint128,
 };
 use cw20_base::contract::execute_mint;
 use quasar_types::callback::{BondResponse, UnbondResponse};
@@ -8,7 +8,7 @@ use crate::{
     helpers::update_user_reward_index,
     state::{
         Unbond, BONDING_SEQ_TO_ADDR, BOND_STATE, DEBUG_TOOL, INVESTMENT, PENDING_BOND_IDS,
-        PENDING_UNBOND_IDS, UNBOND_STATE,
+        PENDING_UNBOND_IDS, UNBOND_STATE
     },
     ContractError,
 };
@@ -90,7 +90,6 @@ pub fn on_bond(
     }
     // at this point we know that the deposit has succeeded fully, and we can mint shares
     let validated_user_address = deps.api.addr_validate(&user_address)?;
-
     // lets updated all pending deposit info
     PENDING_BOND_IDS.update(deps.storage, validated_user_address.clone(), |ids| {
         if let Some(mut bond_ids) = ids {
@@ -140,6 +139,11 @@ pub fn on_bond(
         total_user_value
             .checked_multiply_ratio(total_vault_shares, total_vault_value - total_user_value)?
     };
+
+    // update total supply
+    let mut supply = TOTAL_SUPPLY.load(deps.storage)?;
+    supply.issued += shares_to_mint;
+    TOTAL_SUPPLY.save(deps.storage, &supply)?;
 
     // call into cw20-base to mint the token, call as self as no one else is allowed
     let sub_info = MessageInfo {
@@ -245,6 +249,7 @@ pub fn on_unbond(
     unbonding_stub.unbond_funds = info.funds;
 
     UNBOND_STATE.save(deps.storage, unbond_id.clone(), &unbond_stubs)?;
+    let user_address = BONDING_SEQ_TO_ADDR.load(deps.storage, unbond_id.clone())?;
 
     // if still waiting on successful unbonds, then return
     // todo: should we eagerly send back funds?

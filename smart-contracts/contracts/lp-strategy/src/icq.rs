@@ -83,7 +83,6 @@ pub fn try_icq(
             }
         }
 
-        // TODO: this channel is the same as icq_channel, so we can remove it.
         let channel = ICQ_CHANNEL.load(storage)?;
 
         Ok(Some(create_ibc_ack_submsg(
@@ -207,6 +206,7 @@ pub fn calc_total_balance(
         .iter()
         .find(|coin| coin.denom == config.base_denom)
         .ok_or(ContractError::BaseDenomNotFound)?;
+
     let quote = exit_pool
         .iter()
         .find(|coin| coin.denom == config.quote_denom)

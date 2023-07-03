@@ -2,8 +2,7 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 
 use cosmwasm_std::{Binary, Coin, Decimal, Timestamp, Uint128};
 
-use cw20::{AllowanceResponse, BalanceResponse};
-use cw20::{Expiration, TokenInfoResponse};
+use cw20::{Expiration};
 use cw_asset::AssetInfo;
 pub use cw_controllers::ClaimsResponse;
 use lp_strategy::state::LpCache;
