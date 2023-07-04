@@ -248,7 +248,7 @@ pub fn may_pay_with_ratio(
 
 pub fn bond(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     recipient: Option<String>,
 ) -> Result<Response, ContractError> {
@@ -339,17 +339,17 @@ pub fn bond(
     )?;
     BONDING_SEQ.save(deps.storage, &bond_seq.checked_add(Uint128::new(1))?)?;
 
-    let remainder_msg = BankMsg::Send {
-        to_address: recipient_addr.to_string(),
-        amount: remainder
-            .iter()
-            .filter(|c| !c.amount.is_zero())
-            .map(|r| Coin {
-                denom: r.denom.clone(),
-                amount: r.amount,
-            })
-            .collect(),
-    };
+    // let remainder_msg = BankMsg::Send {
+    //     to_address: recipient_addr.to_string(),
+    //     amount: remainder
+    //         .iter()
+    //         .filter(|c| !c.amount.is_zero())
+    //         .map(|r| Coin {
+    //             denom: r.denom.clone(),
+    //             amount: r.amount,
+    //         })
+    //         .collect(),
+    // };
 
     let primitive_addresses = format!(
         "['{}']",
@@ -381,8 +381,8 @@ pub fn bond(
             ("amounts", &amounts),
             ("data", ""),
         ])
-        .add_messages(bond_msgs?)
-        .add_message(remainder_msg))
+        .add_messages(bond_msgs?))
+        // .add_message(remainder_msg))
 }
 
 pub fn unbond(
@@ -489,13 +489,15 @@ pub fn do_start_unbond(
     BONDING_SEQ_TO_ADDR.save(deps.storage, bond_seq.to_string(), &info.sender.to_string())?;
     BONDING_SEQ.save(deps.storage, &bond_seq.checked_add(Uint128::from(1u128))?)?;
 
-    let mut supply = TOTAL_SUPPLY.load(deps.storage)?;
-    supply.issued = supply
-        .issued
-        .checked_sub(unbond_amount)
-        .map_err(StdError::overflow)?;
-
-    TOTAL_SUPPLY.save(deps.storage, &supply)?;
+    // TODO START - remove this deprecated code
+    // let mut supply = TOTAL_SUPPLY.load(deps.storage)?;
+    // supply.issued = supply
+    //     .issued
+    //     .checked_sub(unbond_amount)
+    //     .map_err(StdError::overflow)?;
+    //
+    // TOTAL_SUPPLY.save(deps.storage, &supply)?;
+    // TODO END - remove this deprecated code
 
     let primitive_addresses = format!(
         "['{}']",
@@ -519,7 +521,7 @@ pub fn do_start_unbond(
                 ("recipient", &info.sender.to_string()),
                 ("bond_id", &bond_seq.to_string()),
                 ("shares_burned", &unbond_amount.to_string()),
-                ("new_total_suply", &supply.issued.to_string()),
+                ("new_total_suply", &supply.to_string()),
                 ("data", ""),
             ]),
     ))

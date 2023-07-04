@@ -180,7 +180,7 @@ pub fn on_bond(
 
 pub fn on_start_unbond(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     unbond_id: String,
     unlock_time: Timestamp,
