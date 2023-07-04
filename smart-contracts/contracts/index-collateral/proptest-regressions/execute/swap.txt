@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 939fc156e162ac501f84b6bdd463bb2278d7b90c371e84951863595f3233eb5d # shrinks to swap_coin = Coin { denom: "", amount: Uint128(40) }, used_assets = UsedAssets { assets: [AssetInfo { asset: Asset { denom: "", destination: Destination(""), deposit_ica: "" }, ratio: Decimal(1), raw_ratio: Uint128(100000) }] }

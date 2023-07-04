@@ -1365,6 +1365,7 @@ dependencies = [
  "cw-utils 1.0.1",
  "cw2 1.0.1",
  "multihop-router",
+ "proptest",
  "schemars",
  "serde",
  "swaprouter",

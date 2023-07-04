@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128, Coin};
+use cosmwasm_std::{Coin, Decimal, Order, StdError, Storage, Uint128};
 
 use cw_storage_plus::Map;
 use multihop_router::route::Destination;
@@ -9,6 +9,7 @@ use crate::ContractError;
 /// UsedAssets is the struct representation of USED_ASSETS, a new assets should either be createed through new
 /// in combination with add_asset(), or preferably, with_assets(). It can then be saved to state with to_state().
 /// UsedAssets can be directly created from USED_ASSETS with from_state
+#[cw_serde]
 pub struct UsedAssets {
     assets: Vec<AssetInfo>,
 }
@@ -89,7 +90,7 @@ impl Default for UsedAssets {
 pub struct AssetInfo {
     pub(crate) asset: Asset,
     pub(crate) ratio: Decimal,
-    raw_ratio: Uint128,
+    pub(crate) raw_ratio: Uint128,
 }
 
 impl AssetInfo {

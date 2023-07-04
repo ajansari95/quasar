@@ -1,4 +1,4 @@
-use cosmwasm_std::{OverflowError, StdError};
+use cosmwasm_std::{OverflowError, StdError, CheckedMultiplyRatioError};
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -20,4 +20,7 @@ pub enum ContractError {
 
     #[error("{0}")]
     PaymentError(#[from] PaymentError),
+
+    #[error("{0}")]
+    CheckedMultiplyRatio(#[from] CheckedMultiplyRatioError)
 }
