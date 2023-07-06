@@ -1,5 +1,5 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Uint128, Timestamp};
+use cosmwasm_std::{Timestamp, Uint128};
 use cw_storage_plus::{Item, Map};
 
 use crate::{
@@ -9,7 +9,8 @@ use crate::{
 
 /// ASSETS is the map of assets known to the index, if there is no entry in the map for an asset
 /// the contract will not be able to handle the asset. It is a mapping of denom to the Asset.
-/// An entry in Assets does not mean
+/// An entry in Assets does not mean the asset is actively used, just that the index has all the data
+/// to use it
 pub const ASSETS: Map<&str, Asset> = Map::new("assets");
 
 /// USED_ASSETS is the map of assets being used for actual collateral by the contract.
@@ -31,6 +32,6 @@ pub const IBC_CONFIG: Item<IbcConfig> = Item::new("ibc_config");
 
 #[cw_serde]
 pub struct IbcConfig {
-    // default timeout_time in seconds 
-    pub timeout_time: u64
+    // default timeout_time in seconds
+    pub timeout_time: u64,
 }

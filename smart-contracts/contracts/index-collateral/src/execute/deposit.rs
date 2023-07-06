@@ -136,14 +136,59 @@ fn send_to_ica(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{testing::mock_dependencies, Timestamp};
+    use cosmwasm_std::{testing::{mock_dependencies, mock_env}, SubMsgResponse, Timestamp};
     use multihop_router::{
         route::{Destination, Route},
         state::ROUTES,
     };
 
     use super::*;
-    use crate::{assets::Asset, state::ASSETS};
+    use crate::{assets::Asset, state::ASSETS, execute::swap::Swap};
+
+    #[test]
+    fn handle_swap_reply_works() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        let token_out_denom = "ibc/uqsr";
+        let token_out_amount = Uint128::new(100);
+
+        let swaps = vec![SwapResult::new(Swap::new(coin(100, "uosmo"), token_out_denom.to_string()), None)];
+        SWAPS.save(deps.as_mut().storage, &swaps).unwrap();
+
+        // our submsg handling doesn't rely on events, so we can leave that empty
+        let sub_msg_result = SubMsgResult::Ok(SubMsgResponse {
+            events: vec![],
+            data: Some(
+                to_binary(&SwapResponse {
+                    original_sender: "me".to_string(),
+                    token_out_denom: token_out_denom.to_string(),
+                    amount: token_out_amount,
+                })
+                .unwrap(),
+            ),
+        });
+
+        // mock stuff for send_to_ica
+        IBC_CONFIG.save(deps.as_mut().storage, &crate::state::IbcConfig { timeout_time: 100 }).unwrap();
+
+        let denom = "ibc/uqsr";
+        let destination = Destination::new("quasar");
+        let asset = Asset::new(denom, destination.clone(), "quasaraddress1");
+
+        ASSETS.save(deps.as_mut().storage, denom, &asset).unwrap();
+        ROUTES
+            .save(
+                deps.as_mut().storage,
+                &RouteId::new(destination, denom.to_string()),
+                &Route::new("channel-1", "port-1", None),
+            )
+            .unwrap();
+
+
+
+        let response = handle_swap_reply(deps.as_mut(), env, sub_msg_result).unwrap();
+    }
 
     #[test]
     fn send_to_ica_works() {
