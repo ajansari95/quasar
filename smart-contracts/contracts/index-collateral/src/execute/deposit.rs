@@ -84,6 +84,7 @@ pub fn handle_swap_reply(
         let timeout: IbcTimeout =
             IbcTimeout::with_timestamp(env.block.time.plus_seconds(ibc_config.timeout_time));
 
+        // TODO we want to also mint shares here and send those to the Quasar account
         let msgs: Result<Vec<IbcMsg>, ContractError> = swaps
             .iter()
             .map(|swap| {
