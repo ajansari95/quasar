@@ -76,6 +76,8 @@ pub fn handle_swap_reply(
         .and_then(|val| Some(val.result = Some(sr.amount)))
         .ok_or(ContractError::OutputDenomNotFound)?;
 
+    SWAPS.save(deps.storage, &swaps)?;
+
     // If all swaps were completed, we can finalize the result and send all funds to the respective ica accounts
     if swaps.iter().all(|swap| swap.result.is_some()) {
         let ibc_config = IBC_CONFIG.load(deps.storage)?;
@@ -95,9 +97,11 @@ pub fn handle_swap_reply(
             })
             .collect();
 
+        // TODO add some attributes
         Ok(Response::new().add_messages(msgs?))
     } else {
         // save the mutated swaps with the new result
+        // TODO set some attributes
         SWAPS.save(deps.storage, &swaps)?;
         Ok(Response::new())
     }
@@ -136,17 +140,89 @@ fn send_to_ica(
 
 #[cfg(test)]
 mod tests {
-    use cosmwasm_std::{testing::{mock_dependencies, mock_env}, SubMsgResponse, Timestamp};
+    use cosmwasm_std::{
+        testing::{mock_dependencies, mock_env},
+        SubMsgResponse, Timestamp,
+    };
     use multihop_router::{
         route::{Destination, Route},
         state::ROUTES,
     };
 
     use super::*;
-    use crate::{assets::Asset, state::ASSETS, execute::swap::Swap};
+    use crate::{assets::Asset, execute::swap::Swap, state::ASSETS};
+    use proptest::{collection, prelude::*};
+
+    prop_compose! {
+        // arb_swap is a strategy to return mock swaps and a a mocked result of the swap
+        fn arb_swap_amount_in(input_denom: String, output_denom: String)(amount_in in 1..u128::MAX) -> Swap {
+            Swap::new(coin(amount_in, input_denom.clone()), output_denom.clone())
+        }
+    }
+
+    prop_compose! {
+        fn arb_swap(input_denom: String)(swap in arb_swap_amount_in(input_denom, any::<String>().to_string()), amount_out in 1..u128::MAX) -> (Swap, Uint128) {
+            (swap, Uint128::new(amount_out))
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn handle_swap_reply_works(swaps in collection::vec(arb_swap(any::<String>().to_string()), 1..100)){
+            let mut deps = mock_dependencies();
+            let env = mock_env();
+
+            SWAPS.save(deps.as_mut().storage, &swaps.iter().map(|(v, _)| SwapResult::new(v.clone(), None)).collect()).unwrap();
+
+            // mock stuff for send_to_ica
+            IBC_CONFIG.save(deps.as_mut().storage, &crate::state::IbcConfig { timeout_time: 100 }).unwrap();
+
+            swaps.into_iter().for_each(|val| {
+                let destination = Destination::new("quasar");
+                let token_out_denom = val.0.output_denom;
+                let token_out_amount = val.1;
+
+                let asset = Asset::new(token_out_denom.clone(), destination.clone(), "quasaraddress1");
+    
+                ASSETS.save(deps.as_mut().storage, token_out_denom.as_str(), &asset).unwrap();
+                ROUTES
+                    .save(
+                        deps.as_mut().storage,
+                        &RouteId::new(destination, token_out_denom.to_string()),
+                        &Route::new("channel-1", "port-1", None),
+                    )
+                    .unwrap();
+
+                // our submsg handling doesn't rely on events, so we can leave that empty
+                let sub_msg_result = SubMsgResult::Ok(SubMsgResponse {
+                    events: vec![],
+                    data: Some(
+                        to_binary(&SwapResponse {
+                            original_sender: "me".to_string(),
+                            token_out_denom: token_out_denom.clone(),
+                            amount: token_out_amount.clone(),
+                        })
+                        .unwrap(),
+                    ),
+                });
+
+                // we can verifiy the response by checking the attributes, we expect to encounter swaps.len()-1 saves and 1 with swaps.len() amount of IBC transfers
+                let response = handle_swap_reply(deps.as_mut(), env.clone(), sub_msg_result).unwrap();
+                // We can also load swaps from SWAPS and verifify that the out_amount of this swap is set to on the loaded swaps
+                let saved_swaps = SWAPS.load(deps.as_mut().storage).unwrap();
+                assert!(saved_swaps.iter().find(|s| {
+                    if s.swap.output_denom == token_out_denom {
+                        s.result.unwrap_or(Uint128::zero()) == token_out_amount
+                    } else {
+                        false
+                    }
+                }).is_some(), "no output found with correct token_out_amount");
+            })
+        }
+    }
 
     #[test]
-    fn handle_swap_reply_works() {
+    fn handle_single_swap_reply_works() {
         let mut deps = mock_dependencies();
         let env = mock_env();
 
@@ -188,7 +264,9 @@ mod tests {
 
 
         let response = handle_swap_reply(deps.as_mut(), env, sub_msg_result).unwrap();
+        assert!(SWAPS.load(deps.as_mut().storage).unwrap().first().unwrap().result.is_some(), "only swap had no result")
     }
+
 
     #[test]
     fn send_to_ica_works() {
