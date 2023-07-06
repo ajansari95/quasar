@@ -51,6 +51,7 @@ thiserror = { version = "1.0.31" }
 multihop-router = { path = "../multihop-router"}
 swaprouter = {path = "../../osmosis-contracts/contracts/swaprouter", features = ["imported"]}
 cw-utils = "1.0.1"
+num_enum = "0.6.1"
 
 
 [dev-dependencies]

@@ -1,33 +1,104 @@
-#[cfg(not(feature = "library"))]
-use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    coin, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    StdResult, Storage, Uint128,
+    coin, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout,
+    MessageInfo, Response, StdError, StdResult, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 use cw_utils::one_coin;
 use multihop_router::contract::handle_get_route;
 use multihop_router::route::RouteId;
+use swaprouter::msg::SwapResponse;
 // use cw2::set_contract_version;
 
 use crate::assets::UsedAssets;
 use crate::error::ContractError;
-use crate::execute::swap::batch_swap;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ASSETS, BONDING_FUNDS, SWAP_CONFIG, USED_ASSETS};
+use crate::execute::swap::{batch_swap, SwapResult};
+use crate::reply::replies::Replies;
+use crate::state::{ASSETS, BONDING_FUNDS, SWAPS, SWAP_CONFIG, USED_ASSETS, IBC_CONFIG};
 
 pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let coin = one_coin(&info)?;
     let assets = UsedAssets::from_state(deps.storage, USED_ASSETS)?;
+
     // the complete flow works like this:
     // swap the tokens to our desired format, after swapping, the rest of the steps have to be called in the reply
     let swap_conf = SWAP_CONFIG.load(deps.storage)?;
-    let swap_executes = batch_swap(swap_conf, coin, assets);
-    todo!()
+    let swaps = batch_swap(coin, assets)?;
+
+    // save the outgoing swaps so we can handle them
+    let swap_results: Vec<SwapResult> = swaps
+        .iter()
+        .map(|(swap, _)| SwapResult::new(swap.clone(), None))
+        .collect();
+    SWAPS.save(deps.storage, &swap_results)?;
+
+    let msgs: Result<Vec<SubMsg>, ContractError> = swaps
+        .into_iter()
+        .map(|(msg, coin)| -> Result<SubMsg, ContractError> {
+            Ok(SubMsg::reply_always(
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: swap_conf.router_addr.clone().to_string(),
+                    msg: to_binary(&msg.into_execute(swaprouter::Slippage::Twap {
+                        window_seconds: swap_conf.twap_window,
+                        slippage_percentage: swap_conf.slippage_percentage,
+                    }))?,
+                    funds: vec![coin],
+                }),
+                Replies::DepositSwap as u64,
+            ))
+        })
+        .collect();
+
+    let swaps = msgs?;
+
+    Ok(Response::new()
+        .add_attribute("swaps", swaps.len().to_string())
+        .add_submessages(swaps))
+}
+
+pub fn handle_swap_reply(
+    deps: DepsMut,
+    env: Env,
+    msg_result: SubMsgResult,
+) -> Result<Response, ContractError> {
+    let bin = msg_result
+        .into_result()
+        .map_err(StdError::generic_err)?
+        .data
+        .ok_or(ContractError::NoSwapReplyData)?;
+
+    let sr: SwapResponse = from_binary(&bin)?;
+
+    let mut swaps = SWAPS.load(deps.storage)?;
+
+    // update our swap status
+    swaps
+        .iter_mut()
+        .find(|s| s.swap.output_denom == sr.token_out_denom)
+        .and_then(|val| Some(val.result = Some(sr.amount)))
+        .ok_or(ContractError::OutputDenomNotFound)?;
+
+    // If all swaps were completed, we can finalize the result and send all funds to the respective ica accounts
+    if swaps.iter().all(|swap| swap.result.is_some()) {
+
+        let ibc_config = IBC_CONFIG.load(deps.storage)?;
+        let timeout: IbcTimeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(ibc_config.timeout_time));
+
+        let msgs: Result<Vec<IbcMsg>, ContractError> = swaps.iter().map(|swap| {
+            // TODO set a configurable timestamp somewhere for the timeout
+            send_to_ica(deps.storage, swap.swap.output_denom.as_str(), swap.result.unwrap(), timeout.clone())
+        }).collect();
+
+        Ok(Response::new().add_messages(msgs?))
+    } else {
+        // save the mutated swaps with the new result
+        SWAPS.save(deps.storage, &swaps)?;
+        Ok(Response::new())
+    }
 }
 
 // for a denom and an amount, get the path to the ICA address and the ICA address.
-// send the tokens to the ICA addresses, no st  ate tracking is done here
-pub(crate) fn send_to_ica(
+// send the tokens to the ICA addresses, this is called after the reply of execute deposit
+// TODO no state tracking is done here right now, we need to track the funds as outstanding collateral returning soon
+fn send_to_ica(
     storage: &mut dyn Storage,
     denom: &str,
     amount: Uint128,

@@ -1,12 +1,10 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, Order, StdError, Storage, Uint128};
+use cosmwasm_std::{Uint128, Timestamp};
 use cw_storage_plus::{Item, Map};
-use multihop_router::route::Destination;
 
 use crate::{
     assets::{Asset, AssetInfo},
-    execute::swap::SwapConfig,
-    ContractError,
+    execute::swap::{SwapConfig, SwapResult},
 };
 
 /// ASSETS is the map of assets known to the index, if there is no entry in the map for an asset
@@ -24,3 +22,15 @@ pub const USED_ASSETS: Map<&str, AssetInfo> = Map::new("used_assets");
 pub const BONDING_FUNDS: Map<&str, Uint128> = Map::new("bonding_funds");
 
 pub const SWAP_CONFIG: Item<SwapConfig> = Item::new("swap_config");
+
+/// SWAPS is the currently being executed swap, since the contract executes a set of submsgs in a single call
+/// we save them here to get the output after slippage
+pub const SWAPS: Item<Vec<SwapResult>> = Item::new("swaps");
+
+pub const IBC_CONFIG: Item<IbcConfig> = Item::new("ibc_config");
+
+#[cw_serde]
+pub struct IbcConfig {
+    // default timeout_time in seconds 
+    pub timeout_time: u64
+}

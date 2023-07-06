@@ -1,4 +1,4 @@
-use cosmwasm_std::{OverflowError, StdError, CheckedMultiplyRatioError};
+use cosmwasm_std::{CheckedMultiplyRatioError, OverflowError, StdError};
 use cw_utils::PaymentError;
 use thiserror::Error;
 
@@ -15,6 +15,12 @@ pub enum ContractError {
     #[error("{0}")]
     Router(#[from] RouterError),
 
+    #[error("No swap reply data")]
+    NoSwapReplyData,
+
+    #[error("Output Denom not found")]
+    OutputDenomNotFound,
+
     #[error("{0}")]
     OverflowError(#[from] OverflowError),
 
@@ -22,5 +28,5 @@ pub enum ContractError {
     PaymentError(#[from] PaymentError),
 
     #[error("{0}")]
-    CheckedMultiplyRatio(#[from] CheckedMultiplyRatioError)
+    CheckedMultiplyRatio(#[from] CheckedMultiplyRatioError),
 }

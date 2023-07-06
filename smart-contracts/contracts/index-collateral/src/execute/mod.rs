@@ -1,3 +1,3 @@
 mod collateral;
-mod deposit;
+pub mod deposit;
 pub mod swap;
