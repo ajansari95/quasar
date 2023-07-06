@@ -1,6 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult, CosmosMsg};
+use osmosis_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenom;
 // use cw2::set_contract_version;
 
 use crate::error::ContractError;
@@ -18,11 +19,17 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     _deps: DepsMut,
-    _env: Env,
+    env: Env,
     _info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    unimplemented!()
+    
+    // construct message and convert them into cosmos message
+    // (notice `CosmosMsg` type and `.into()`)
+    let sender = env.contract.address.into();
+    let msg_create_denom: CosmosMsg = MsgCreateDenom { sender, subdenom: msg.collateral_denom}.into();
+
+    Ok(Response::new().add_message(msg_create_denom))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

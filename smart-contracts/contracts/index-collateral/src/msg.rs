@@ -2,7 +2,9 @@ use cosmwasm_schema::{cw_serde, QueryResponses};
 use multihop_router::msg::ExecuteMsg as RouterExecuteMsg;
 
 #[cw_serde]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub collateral_denom: String
+}
 
 #[cw_serde]
 pub enum ExecuteMsg {
