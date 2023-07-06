@@ -12,7 +12,7 @@ use crate::assets::UsedAssets;
 use crate::error::ContractError;
 use crate::execute::swap::{batch_swap, SwapResult};
 use crate::reply::replies::Replies;
-use crate::state::{ASSETS, BONDING_FUNDS, SWAPS, SWAP_CONFIG, USED_ASSETS, IBC_CONFIG};
+use crate::state::{ASSETS, BONDING_FUNDS, IBC_CONFIG, SWAPS, SWAP_CONFIG, USED_ASSETS};
 
 pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let coin = one_coin(&info)?;
@@ -78,14 +78,22 @@ pub fn handle_swap_reply(
 
     // If all swaps were completed, we can finalize the result and send all funds to the respective ica accounts
     if swaps.iter().all(|swap| swap.result.is_some()) {
-
         let ibc_config = IBC_CONFIG.load(deps.storage)?;
-        let timeout: IbcTimeout = IbcTimeout::with_timestamp(env.block.time.plus_seconds(ibc_config.timeout_time));
+        let timeout: IbcTimeout =
+            IbcTimeout::with_timestamp(env.block.time.plus_seconds(ibc_config.timeout_time));
 
-        let msgs: Result<Vec<IbcMsg>, ContractError> = swaps.iter().map(|swap| {
-            // TODO set a configurable timestamp somewhere for the timeout
-            send_to_ica(deps.storage, swap.swap.output_denom.as_str(), swap.result.unwrap(), timeout.clone())
-        }).collect();
+        let msgs: Result<Vec<IbcMsg>, ContractError> = swaps
+            .iter()
+            .map(|swap| {
+                // TODO set a configurable timestamp somewhere for the timeout
+                send_to_ica(
+                    deps.storage,
+                    swap.swap.output_denom.as_str(),
+                    swap.result.unwrap(),
+                    timeout.clone(),
+                )
+            })
+            .collect();
 
         Ok(Response::new().add_messages(msgs?))
     } else {
@@ -124,4 +132,46 @@ fn send_to_ica(
         amount: coin(amount.u128(), asset.denom),
         timeout,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{testing::mock_dependencies, Timestamp};
+    use multihop_router::{
+        route::{Destination, Route},
+        state::ROUTES,
+    };
+
+    use super::*;
+    use crate::{assets::Asset, state::ASSETS};
+
+    #[test]
+    fn send_to_ica_works() {
+        let mut deps = mock_dependencies();
+
+        let denom = "ibc/uqsr";
+        let destination = Destination::new("quasar");
+        let asset = Asset::new(denom, destination.clone(), "quasaraddress1");
+
+        ASSETS.save(deps.as_mut().storage, denom, &asset).unwrap();
+        ROUTES
+            .save(
+                deps.as_mut().storage,
+                &RouteId::new(destination, denom.to_string()),
+                &Route::new("channel-1", "port-1", None),
+            )
+            .unwrap();
+
+        let amount = Uint128::new(1000);
+        let timeout = IbcTimeout::with_timestamp(Timestamp::from_seconds(100));
+        let res = send_to_ica(deps.as_mut().storage, denom, amount, timeout.clone()).unwrap();
+
+        let expected = IbcMsg::Transfer {
+            channel_id: "channel-1".to_string(),
+            to_address: "quasaraddress1".to_string(),
+            amount: coin(amount.u128(), asset.denom),
+            timeout,
+        };
+        assert_eq!(expected, res)
+    }
 }
