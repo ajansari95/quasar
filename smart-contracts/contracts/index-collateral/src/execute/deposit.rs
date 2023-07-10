@@ -1,10 +1,16 @@
+use std::ops::Index;
+
 use cosmwasm_std::{
     coin, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, StdError, StdResult, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
+    MessageInfo, Response, StdError, StdResult, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg, QuerierWrapper, Addr, Empty, Decimal, Fraction,
 };
 use cw_utils::one_coin;
 use multihop_router::contract::handle_get_route;
 use multihop_router::route::RouteId;
+use osmosis_std::types::osmosis::twap::v1beta1::TwapQuerier;
+use osmosis_std::types::{
+    cosmos::base::v1beta1::Coin as OsmoCoin, osmosis::tokenfactory::v1beta1::MsgMint,
+};
 use swaprouter::msg::SwapResponse;
 // use cw2::set_contract_version;
 
@@ -12,7 +18,7 @@ use crate::assets::UsedAssets;
 use crate::error::ContractError;
 use crate::execute::swap::{batch_swap, SwapResult};
 use crate::reply::replies::Replies;
-use crate::state::{ASSETS, BONDING_FUNDS, IBC_CONFIG, SWAPS, SWAP_CONFIG, USED_ASSETS};
+use crate::state::{ASSETS, BONDING_FUNDS, IBC_CONFIG, SWAPS, SWAP_CONFIG, USED_ASSETS, COLLATERAL_DENOM, VALUE_DENOM};
 
 pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let coin = one_coin(&info)?;
@@ -85,6 +91,9 @@ pub fn handle_swap_reply(
             IbcTimeout::with_timestamp(env.block.time.plus_seconds(ibc_config.timeout_time));
 
         // TODO we want to also mint shares here and send those to the Quasar account
+        // to mint shares for the user, we need to query the value of every swap converted to a single denom, probably USDC
+        let mint = mint_shares(deps.storage, deps.querier, env, &swaps)?;
+
         let msgs: Result<Vec<IbcMsg>, ContractError> = swaps
             .iter()
             .map(|swap| {
@@ -99,7 +108,7 @@ pub fn handle_swap_reply(
             .collect();
 
         // TODO add some attributes
-        Ok(Response::new().add_messages(msgs?))
+        Ok(Response::new().add_messages(msgs?).add_submessage(mint))
     } else {
         // save the mutated swaps with the new result
         // TODO set some attributes
@@ -107,6 +116,68 @@ pub fn handle_swap_reply(
         Ok(Response::new())
     }
 }
+
+fn mint_shares(storage: &mut dyn Storage, querier: QuerierWrapper, env: Env, swaps: &Vec<SwapResult>) -> Result<SubMsg, ContractError> {
+    let amount = calc_share_amount(storage, querier, swaps)?;
+
+    let denom = COLLATERAL_DENOM.load(storage)?;
+
+    let mint = MsgMint {
+        sender: env.contract.address.to_string(),
+        amount: Some(OsmoCoin {
+            denom: denom,
+            amount: amount.to_string(),
+        }),
+        mint_to_address: env.contract.address.to_string(),
+    };
+
+    Ok(SubMsg::reply_always(mint, Replies::MintShare.into()))
+}
+
+fn calc_share_amount(storage: &mut dyn Storage, querier: QuerierWrapper, swaps: &Vec<SwapResult>) -> Result<Uint128, ContractError> {
+    let value_denom = VALUE_DENOM.load(storage)?;
+
+    swaps.iter().fold(Uint128::zero(), |swap| {
+    })
+    todo!()
+}
+
+fn calc_asset_value(querier: QuerierWrapper<Empty>, env: Env, twap_window: u64, router_address: Addr, swap: &SwapResult, value_denom: String) -> Result<Uint128, ContractError> {
+    let twap_querier = TwapQuerier::new(&querier);
+
+    // get the route from the swaprouter
+    let routes: swaprouter::msg::GetRouteResponse = querier.query_wasm_smart(router_address, &swaprouter::msg::QueryMsg::GetRoute { input_denom: swap.swap.output_denom, output_denom: value_denom })?;
+    // calculate the asset value to usdc over the pool route
+    // for each value in the pool route, we keep an "input value", query the twap to change that input value to an intermediate value
+    // finally, we should endup with the amount in value denom
+    let mut quote_asset = swap.swap.output_denom;
+    let mut amount = swap.result.unwrap();
+    let result = Uint128::zero();
+    for (i, route) in routes.pool_route.into_iter().enumerate() {
+        // get the 5min twap to calculate the on the route to calculate the final value
+        // we use a geometric twap since it's more robust for our case, see https://delphilabs.medium.com/which-one-should-you-use-arithmetic-or-geometric-mean-twap-ded01532bf49#:~:text=The%20AM%20TWAP%20can%20be,spot%20price%20at%20block%20i.
+        // 
+        let base_asset = route.token_out_denom;
+        let pool = route.pool_id;
+        let start_time = env.block.time.minus_seconds(twap_window);
+
+        // When swapping from input to output, we need to quote the price in the input token
+        // For example when seling osmo to buy atom:
+        //  price of <out> is X<in> (i.e.: price of atom is Xosmo)
+        let twap: Decimal = twap_querier.geometric_twap_to_now(pool, base_asset, quote_asset, Some(osmosis_std::shim::Timestamp { seconds: start_time.seconds() as i64, nanos: 0 }))?.geometric_twap.parse()?;
+
+        // calculate the intermediate amount
+        amount = amount.checked_multiply_ratio(twap.numerator(), twap.denominator())?;
+
+        // set the denoms for the next item
+        if let Some(next) = routes.pool_route.get(i) {
+            quote_asset = base_asset;
+        }
+    }
+    // after our iteration step, 
+    todo!()
+}
+
 
 // for a denom and an amount, get the path to the ICA address and the ICA address.
 // send the tokens to the ICA addresses, this is called after the reply of execute deposit
@@ -184,7 +255,7 @@ mod tests {
                 let token_out_amount = val.1;
 
                 let asset = Asset::new(token_out_denom.clone(), destination.clone(), "quasaraddress1");
-    
+
                 ASSETS.save(deps.as_mut().storage, token_out_denom.as_str(), &asset).unwrap();
                 ROUTES
                     .save(
@@ -230,7 +301,10 @@ mod tests {
         let token_out_denom = "ibc/uqsr";
         let token_out_amount = Uint128::new(100);
 
-        let swaps = vec![SwapResult::new(Swap::new(coin(100, "uosmo"), token_out_denom.to_string()), None)];
+        let swaps = vec![SwapResult::new(
+            Swap::new(coin(100, "uosmo"), token_out_denom.to_string()),
+            None,
+        )];
         SWAPS.save(deps.as_mut().storage, &swaps).unwrap();
 
         // our submsg handling doesn't rely on events, so we can leave that empty
@@ -247,7 +321,12 @@ mod tests {
         });
 
         // mock stuff for send_to_ica
-        IBC_CONFIG.save(deps.as_mut().storage, &crate::state::IbcConfig { timeout_time: 100 }).unwrap();
+        IBC_CONFIG
+            .save(
+                deps.as_mut().storage,
+                &crate::state::IbcConfig { timeout_time: 100 },
+            )
+            .unwrap();
 
         let denom = "ibc/uqsr";
         let destination = Destination::new("quasar");
@@ -262,12 +341,18 @@ mod tests {
             )
             .unwrap();
 
-
-
         let response = handle_swap_reply(deps.as_mut(), env, sub_msg_result).unwrap();
-        assert!(SWAPS.load(deps.as_mut().storage).unwrap().first().unwrap().result.is_some(), "only swap had no result")
+        assert!(
+            SWAPS
+                .load(deps.as_mut().storage)
+                .unwrap()
+                .first()
+                .unwrap()
+                .result
+                .is_some(),
+            "only swap had no result"
+        )
     }
-
 
     #[test]
     fn send_to_ica_works() {
