@@ -9,7 +9,7 @@ use osmosis_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenom;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::reply::replies::handle_reply;
-use crate::state::COLLATERAL_DENOM;
+use crate::state::SHARE_DENOM;
 
 use multihop_router::contract::execute as router_execute;
 
@@ -26,8 +26,7 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-
-    COLLATERAL_DENOM.save(deps.storage, &msg.collateral_denom)?;
+    SHARE_DENOM.save(deps.storage, &msg.collateral_denom)?;
 
     // construct message and convert them into cosmos message
     // (notice `CosmosMsg` type and `.into()`)

@@ -1,8 +1,9 @@
 use std::ops::Index;
 
 use cosmwasm_std::{
-    coin, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, IbcMsg, IbcTimeout,
-    MessageInfo, Response, StdError, StdResult, Storage, SubMsg, SubMsgResult, Uint128, WasmMsg, QuerierWrapper, Addr, Empty, Decimal, Fraction,
+    coin, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Empty,
+    Env, Fraction, IbcMsg, IbcTimeout, MessageInfo, QuerierWrapper, Response, StdError, StdResult,
+    Storage, SubMsg, SubMsgResult, Uint128, WasmMsg,
 };
 use cw_utils::one_coin;
 use multihop_router::contract::handle_get_route;
@@ -18,7 +19,9 @@ use crate::assets::UsedAssets;
 use crate::error::ContractError;
 use crate::execute::swap::{batch_swap, SwapResult};
 use crate::reply::replies::Replies;
-use crate::state::{ASSETS, BONDING_FUNDS, IBC_CONFIG, SWAPS, SWAP_CONFIG, USED_ASSETS, COLLATERAL_DENOM, VALUE_DENOM};
+use crate::state::{
+    ASSETS, BONDING_FUNDS, IBC_CONFIG, SHARE_DENOM, SWAPS, SWAP_CONFIG, USED_ASSETS, VALUE_DENOM,
+};
 
 pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Response, ContractError> {
     let coin = one_coin(&info)?;
@@ -43,7 +46,7 @@ pub(crate) fn execute_deposit(deps: DepsMut, info: MessageInfo) -> Result<Respon
                 CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: swap_conf.router_addr.clone().to_string(),
                     msg: to_binary(&msg.into_execute(swaprouter::Slippage::Twap {
-                        window_seconds: swap_conf.twap_window,
+                        window_seconds: Some(swap_conf.twap_window),
                         slippage_percentage: swap_conf.slippage_percentage,
                     }))?,
                     funds: vec![coin],
@@ -117,10 +120,15 @@ pub fn handle_swap_reply(
     }
 }
 
-fn mint_shares(storage: &mut dyn Storage, querier: QuerierWrapper, env: Env, swaps: &Vec<SwapResult>) -> Result<SubMsg, ContractError> {
-    let amount = calc_share_amount(storage, querier, swaps)?;
+fn mint_shares(
+    storage: &mut dyn Storage,
+    querier: QuerierWrapper,
+    env: Env,
+    swaps: &Vec<SwapResult>,
+) -> Result<SubMsg, ContractError> {
+    let amount = calc_share_amount(storage, querier, env.clone(), swaps)?;
 
-    let denom = COLLATERAL_DENOM.load(storage)?;
+    let denom = SHARE_DENOM.load(storage)?;
 
     let mint = MsgMint {
         sender: env.contract.address.to_string(),
@@ -134,50 +142,87 @@ fn mint_shares(storage: &mut dyn Storage, querier: QuerierWrapper, env: Env, swa
     Ok(SubMsg::reply_always(mint, Replies::MintShare.into()))
 }
 
-fn calc_share_amount(storage: &mut dyn Storage, querier: QuerierWrapper, swaps: &Vec<SwapResult>) -> Result<Uint128, ContractError> {
+fn calc_share_amount(
+    storage: &mut dyn Storage,
+    querier: QuerierWrapper,
+    env: Env,
+    swaps: &Vec<SwapResult>,
+) -> Result<Uint128, ContractError> {
     let value_denom = VALUE_DENOM.load(storage)?;
+    let swap_config = SWAP_CONFIG.load(storage)?;
 
-    swaps.iter().fold(Uint128::zero(), |swap| {
-    })
-    todo!()
+    swaps.iter().try_fold(
+        Uint128::zero(),
+        |accum, swap| -> Result<Uint128, ContractError> {
+            Ok(calc_asset_value(
+                querier,
+                &env,
+                swap_config.twap_window,
+                swap_config.router_addr.clone(),
+                swap,
+                value_denom.clone(),
+            )? + accum)
+        },
+    )
 }
 
-fn calc_asset_value(querier: QuerierWrapper<Empty>, env: Env, twap_window: u64, router_address: Addr, swap: &SwapResult, value_denom: String) -> Result<Uint128, ContractError> {
+fn calc_asset_value(
+    querier: QuerierWrapper<Empty>,
+    env: &Env,
+    twap_window: u64,
+    router_address: Addr,
+    swap: &SwapResult,
+    value_denom: String,
+) -> Result<Uint128, ContractError> {
     let twap_querier = TwapQuerier::new(&querier);
 
     // get the route from the swaprouter
-    let routes: swaprouter::msg::GetRouteResponse = querier.query_wasm_smart(router_address, &swaprouter::msg::QueryMsg::GetRoute { input_denom: swap.swap.output_denom, output_denom: value_denom })?;
+    let routes: swaprouter::msg::GetRouteResponse = querier.query_wasm_smart(
+        router_address,
+        &swaprouter::msg::QueryMsg::GetRoute {
+            input_denom: swap.swap.output_denom.clone(),
+            output_denom: value_denom,
+        },
+    )?;
     // calculate the asset value to usdc over the pool route
     // for each value in the pool route, we keep an "input value", query the twap to change that input value to an intermediate value
     // finally, we should endup with the amount in value denom
-    let mut quote_asset = swap.swap.output_denom;
+    let mut quote_asset = swap.swap.output_denom.clone();
     let mut amount = swap.result.unwrap();
-    let result = Uint128::zero();
-    for (i, route) in routes.pool_route.into_iter().enumerate() {
+
+    for route in routes.pool_route.into_iter() {
         // get the 5min twap to calculate the on the route to calculate the final value
         // we use a geometric twap since it's more robust for our case, see https://delphilabs.medium.com/which-one-should-you-use-arithmetic-or-geometric-mean-twap-ded01532bf49#:~:text=The%20AM%20TWAP%20can%20be,spot%20price%20at%20block%20i.
-        // 
-        let base_asset = route.token_out_denom;
+        //
+        let base_asset = route.token_out_denom.clone();
         let pool = route.pool_id;
         let start_time = env.block.time.minus_seconds(twap_window);
 
         // When swapping from input to output, we need to quote the price in the input token
         // For example when seling osmo to buy atom:
         //  price of <out> is X<in> (i.e.: price of atom is Xosmo)
-        let twap: Decimal = twap_querier.geometric_twap_to_now(pool, base_asset, quote_asset, Some(osmosis_std::shim::Timestamp { seconds: start_time.seconds() as i64, nanos: 0 }))?.geometric_twap.parse()?;
+        let twap: Decimal = twap_querier
+            .geometric_twap_to_now(
+                pool,
+                base_asset.clone(),
+                quote_asset,
+                Some(osmosis_std::shim::Timestamp {
+                    seconds: start_time.seconds() as i64,
+                    nanos: 0,
+                }),
+            )?
+            .geometric_twap
+            .parse()?;
 
         // calculate the intermediate amount
         amount = amount.checked_multiply_ratio(twap.numerator(), twap.denominator())?;
 
-        // set the denoms for the next item
-        if let Some(next) = routes.pool_route.get(i) {
-            quote_asset = base_asset;
-        }
+        // set the denoms for the next item, if there is no next item, this has no effect
+        quote_asset = base_asset;
     }
-    // after our iteration step, 
-    todo!()
+    // after our iteration step, we should have the total amount
+    Ok(amount)
 }
-
 
 // for a denom and an amount, get the path to the ICA address and the ICA address.
 // send the tokens to the ICA addresses, this is called after the reply of execute deposit

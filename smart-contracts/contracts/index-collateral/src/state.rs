@@ -7,7 +7,7 @@ use crate::{
     execute::swap::{SwapConfig, SwapResult},
 };
 
-pub const COLLATERAL_DENOM: Item<String> = Item::new("collateral_denom");
+pub const SHARE_DENOM: Item<String> = Item::new("collateral_denom");
 // TODO rename this
 pub const VALUE_DENOM: Item<String> = Item::new("value_denom");
 
