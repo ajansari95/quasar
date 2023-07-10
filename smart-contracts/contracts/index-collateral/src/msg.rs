@@ -3,7 +3,7 @@ use multihop_router::msg::ExecuteMsg as RouterExecuteMsg;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    pub collateral_denom: String
+    pub collateral_denom: String,
 }
 
 #[cw_serde]

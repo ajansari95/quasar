@@ -6,6 +6,7 @@ use swaprouter::{msg::ExecuteMsg as SwapRouterExecute, Slippage};
 #[cw_serde]
 pub struct SwapConfig {
     pub(crate) router_addr: Addr,
+    // the twap window used in seconds
     pub(crate) twap_window: Option<u64>,
     pub(crate) slippage_percentage: Decimal,
 }

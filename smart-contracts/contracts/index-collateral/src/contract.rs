@@ -1,12 +1,15 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult, CosmosMsg};
+use cosmwasm_std::{
+    Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdResult,
+};
 use osmosis_std::types::osmosis::tokenfactory::v1beta1::MsgCreateDenom;
 // use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::reply::replies::handle_reply;
+use crate::state::COLLATERAL_DENOM;
 
 use multihop_router::contract::execute as router_execute;
 
@@ -18,16 +21,22 @@ const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    _deps: DepsMut,
+    deps: DepsMut,
     env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    
+
+    COLLATERAL_DENOM.save(deps.storage, &msg.collateral_denom)?;
+
     // construct message and convert them into cosmos message
     // (notice `CosmosMsg` type and `.into()`)
     let sender = env.contract.address.into();
-    let msg_create_denom: CosmosMsg = MsgCreateDenom { sender, subdenom: msg.collateral_denom}.into();
+    let msg_create_denom: CosmosMsg = MsgCreateDenom {
+        sender,
+        subdenom: msg.collateral_denom,
+    }
+    .into();
 
     Ok(Response::new().add_message(msg_create_denom))
 }

@@ -52,6 +52,7 @@ multihop-router = { path = "../multihop-router"}
 swaprouter = {path = "../../osmosis-contracts/contracts/swaprouter", features = ["imported"]}
 cw-utils = "1.0.1"
 num_enum = "0.6.1"
+osmosis-std = "0.15.3"
 
 
 [dev-dependencies]

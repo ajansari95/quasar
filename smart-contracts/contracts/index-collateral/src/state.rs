@@ -7,6 +7,10 @@ use crate::{
     execute::swap::{SwapConfig, SwapResult},
 };
 
+pub const COLLATERAL_DENOM: Item<String> = Item::new("collateral_denom");
+// TODO rename this
+pub const VALUE_DENOM: Item<String> = Item::new("value_denom");
+
 /// ASSETS is the map of assets known to the index, if there is no entry in the map for an asset
 /// the contract will not be able to handle the asset. It is a mapping of denom to the Asset.
 /// An entry in Assets does not mean the asset is actively used, just that the index has all the data
