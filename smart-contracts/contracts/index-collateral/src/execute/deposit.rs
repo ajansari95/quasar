@@ -259,15 +259,21 @@ fn send_to_ica(
 mod tests {
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env},
-        SubMsgResponse, Timestamp,
+        ContractResult, QuerierResult, SubMsgResponse, SystemResult, Timestamp,
     };
     use multihop_router::{
         route::{Destination, Route},
         state::ROUTES,
     };
+    use osmosis_std::types::osmosis::{poolmanager::v1beta1::SwapAmountInRoute, twap::v1beta1::GeometricTwapToNowResponse};
 
     use super::*;
-    use crate::{assets::Asset, execute::swap::Swap, state::ASSETS};
+    use crate::{
+        assets::Asset,
+        execute::swap::{Swap, SwapConfig},
+        state::ASSETS,
+    };
+    use swaprouter::msg::GetRouteResponse;
     use proptest::{collection, prelude::*};
 
     prop_compose! {
@@ -289,7 +295,20 @@ mod tests {
             let mut deps = mock_dependencies();
             let env = mock_env();
 
+            SWAP_CONFIG.save(deps.as_mut().storage, &SwapConfig{ router_addr: Addr::unchecked("router_addy"), twap_window: 100, slippage_percentage: Decimal::percent(5) }).unwrap();
+            VALUE_DENOM.save(deps.as_mut().storage, &"usdc".to_string()).unwrap();
+            SHARE_DENOM.save(deps.as_mut().storage, &"share".to_string()).unwrap();
+
             SWAPS.save(deps.as_mut().storage, &swaps.iter().map(|(v, _)| SwapResult::new(v.clone(), None)).collect()).unwrap();
+            // we mock the swap route in a simple way, actual module logic testing happens through test tube tests
+            deps.querier.update_wasm(|wq| {
+                SystemResult::Ok(ContractResult::Ok(to_binary(&GetRouteResponse{pool_route: vec![SwapAmountInRoute{ pool_id: 1, token_out_denom: "usdc".to_string() }]}).unwrap()))
+            });
+
+            deps.querier = deps.querier(|cq| {
+                SystemResult::Ok(ContractResult::Ok(to_binary(&GeometricTwapToNowResponse{ geometric_twap: "1.0".to_string() }).unwrap()))
+            });
+
 
             // mock stuff for send_to_ica
             IBC_CONFIG.save(deps.as_mut().storage, &crate::state::IbcConfig { timeout_time: 100 }).unwrap();

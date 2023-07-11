@@ -73,8 +73,8 @@ impl UsedAssets {
         }
     }
 
-    /// Compare a vec of assets and there internal ratios to the expected ratio of the 
-    pub fn cmp_to_balance(&mut self, assets: Vec<Coin>) -> Result<Vec<Coin>, ContractError>{
+    /// Compare a vec of assets and there internal ratios to the expected ratio of the
+    pub fn cmp_to_balance(&mut self, assets: Vec<Coin>) -> Result<Vec<Coin>, ContractError> {
         // for all actual assets, we have to calculate
         todo!()
     }

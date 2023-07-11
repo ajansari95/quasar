@@ -41,7 +41,7 @@ optimize = """docker run --rm -v "$(pwd)":/code \
 
 [dependencies]
 cosmwasm-schema = "1.1.3"
-cosmwasm-std = "1.1.3"
+cosmwasm-std = {version = "1.2.5", features = ["stargate"]}
 cosmwasm-storage = "1.1.3"
 cw-storage-plus = "1.0.1"
 cw2 = "1.0.1"
@@ -52,7 +52,7 @@ multihop-router = { path = "../multihop-router"}
 swaprouter = {path = "../../osmosis-contracts/contracts/swaprouter", features = ["imported"]}
 cw-utils = "1.0.1"
 num_enum = "0.6.1"
-osmosis-std = "0.15.3"
+osmosis-std = "0.15.2"
 
 
 [dev-dependencies]
