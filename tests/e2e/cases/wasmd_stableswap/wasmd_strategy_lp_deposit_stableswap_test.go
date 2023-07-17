@@ -170,7 +170,7 @@ func (s *WasmdTestSuite) SetupSuite() {
 	)
 }
 
-func (s *WasmdTestSuite) TestLpStrategyContract_JoinPoolRetry() {
+func (s *WasmdTestSuite) TestLpStrategyContract_SuccessfulDeposit() {
 	t := s.T()
 	ctx := context.Background()
 
