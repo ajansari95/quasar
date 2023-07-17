@@ -156,10 +156,3 @@ func (s *WasmdTestSuite) CreatePools(ctx context.Context) {
 	s.Require().NoError(err)
 	s.CreatePoolsOnOsmosis(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.Treasury.KeyName, poolBz)
 }
-
-func (s *WasmdTestSuite) JoinPools(ctx context.Context, poolIds []string, maxAmountsIn []string, sharesAmountOut []string) {
-	// TODO: require len(allTheArgs) is the same
-	for i, _ := range poolIds {
-		s.JoinPoolOnOsmosis(ctx, s.Osmosis(), s.E2EBuilder.OsmosisAccounts.Treasury.KeyName, poolIds[i], maxAmountsIn[i], sharesAmountOut[i])
-	}
-}

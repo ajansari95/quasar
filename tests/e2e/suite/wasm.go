@@ -90,7 +90,8 @@ func (s *E2ETestSuite) ExecuteContract(
 	keyName string,
 	contractAddr string,
 	funds sdk.Coins,
-	args any, result any,
+	args any,
+	result any,
 ) {
 	tn := GetFullNode(chain)
 
