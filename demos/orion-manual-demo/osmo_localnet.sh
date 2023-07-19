@@ -2,7 +2,7 @@
 
 # Configure variables
 BINARY=osmosisd
-HOME_OSMOSIS=$HOME/.osmosis
+HOME_OSMOSIS=$HOME/.osmosisd
 CHAIN_ID=osmosis
 ALICE="cruise scene law sea push expose scorpion wire trick repair wave quote task dose inner denial alpha favorite certain blouse motion flash split lunch"
 BOB="lizard garlic canyon winner cheese tent drip task because ecology clay bridge junk critic track artefact gather harsh deliver unit vacant earth diesel stool"

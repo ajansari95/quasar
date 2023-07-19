@@ -48,7 +48,7 @@ echo $CADDR
 CADDR2=$(echo $CADDR | cut -c 2- | rev | cut -c 2- | rev)
 
 AMOUNT="100000uosmo"
-HOME_OSMOSIS=$HOME/.osmosis
+HOME_OSMOSIS=$HOME/.osmosisd
 # echo $CADDR
 # echo "preloading the ICA address with $AMOUNT to play around with"
 BANTX=$(osmosisd tx bank send bob $CADDR2 $AMOUNT -y --keyring-backend test --node tcp://localhost:26679 --chain-id osmosis --gas 583610 --home $HOME_OSMOSIS)
