@@ -1,4 +1,4 @@
-package wasmd_deposit
+package wasmd_stableswap
 
 import (
 	"context"

@@ -1,5 +1,5 @@
 {
-    "scaling-factors": "1,1",
+    "weights": "4fakestake,4uosmo",
     "initial-deposit": "100000000fakestake,100000000uosmo",
     "swap-fee": "0.01",
     "exit-fee": "0.00",

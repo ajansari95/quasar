@@ -36,9 +36,9 @@ sleep 10
 # create a pool on osmosis to test against
 osmosisd tx gamm create-pool --pool-file ./sample_pool1.json --node http://127.0.0.1:26679 --pool-type "stableswap" --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 sleep 6
-osmosisd tx gamm create-pool --pool-file ./sample_pool2.json --node http://127.0.0.1:26679 --pool-type "stableswap" --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
+osmosisd tx gamm create-pool --pool-file ./sample_pool2.json --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 sleep 6
-osmosisd tx gamm create-pool --pool-file ./sample_pool3.json --node http://127.0.0.1:26679 --pool-type "stableswap" --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
+osmosisd tx gamm create-pool --pool-file ./sample_pool3.json --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 
 # run hermes and save pid, run_hermes and setup_go_relayer might not relay over the same channel out of the box due to connection creation in both scripts
 # ./run_hermes.sh  &
