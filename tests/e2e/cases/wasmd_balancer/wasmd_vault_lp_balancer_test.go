@@ -170,7 +170,7 @@ func (s *WasmdTestSuite) SetupSuite() {
 
 // TestLpStrategyContract_SuccessfulDeposit tests the lp strategy contract creating an ICA channel between the contract and osmosis
 // and depositing 1000uqsr tokens to the contract which it must ibc transfer to its ICA account at osmosis.
-func (s *WasmdTestSuite) TestLpStrategyContract_SuccessfulDeposit() {
+func (s *WasmdTestSuite) TestLpStrategyContract_BalancerActions() {
 	t := s.T()
 	ctx := context.Background()
 

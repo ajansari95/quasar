@@ -238,7 +238,7 @@ func (s *Qtransfer) TestQtransfer_Timeout() {
 // TestQtransferStrategyLpDepositOK tests the LP strategy contract by creating an Interchain Account (ICA) channel between Osmosis and Quasar.
 // It involves depositing 10 OSMO (represented as 10000000uosmo) into the user's account on Osmosis, and then initiating an IBC transfer to Quasar.
 // This transfer triggers the QTransfer module's IBC hooks on the Quasar side, leading to an interaction with the contract.
-func (s *Qtransfer) TestQtransferStrategyLpDeposit() {
+func (s *Qtransfer) TestQtransfer_LpStrategyIBCHooksDeposit() {
 	t := s.T()
 	ctx := context.Background()
 
