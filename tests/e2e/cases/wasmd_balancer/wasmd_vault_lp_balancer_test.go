@@ -364,17 +364,8 @@ func (s *WasmdTestSuite) TestLpStrategyContract_BalancerActions() {
 			s.Require().Equal(tc.expectedNumberOfUnbonds, int64(len(pendingUnbondsData.Data.PendingUnbonds)))
 			s.Require().Equal(tc.UnbondAmount, pendingUnbondsData.Data.PendingUnbonds[tc.expectedNumberOfUnbonds-1].Shares)
 		case "claim":
-			tn := testsuite.GetFullNode(s.Quasar())
-			cmds := []string{"bank", "balances", tc.Account.Bech32Address(s.Quasar().Config().Bech32Prefix),
-				"--output", "json",
-			}
-
-			res, _, err := tn.ExecQuery(ctx, cmds...)
-			s.Require().NoError(err)
-
-			var balanceBefore testsuite.QueryAllBalancesResponse
-			err = json.Unmarshal(res, &balanceBefore)
-			s.Require().NoError(err)
+			currAcc := tc.Account.Bech32Address(s.Quasar().Config().Bech32Prefix)
+			balanceBefore, _ := s.Quasar().GetBalance(ctx, currAcc, s.OsmosisDenomInQuasar)
 
 			s.ExecuteContract(
 				ctx,
@@ -404,15 +395,9 @@ func (s *WasmdTestSuite) TestLpStrategyContract_BalancerActions() {
 			err = testutil.WaitForBlocks(ctx, 15, s.Quasar(), s.Osmosis())
 			s.Require().NoError(err)
 
-			tn = testsuite.GetFullNode(s.Quasar())
-			res, _, err = tn.ExecQuery(ctx, cmds...)
-			s.Require().NoError(err)
+			balanceAfter, _ := s.Quasar().GetBalance(ctx, currAcc, s.OsmosisDenomInQuasar)
 
-			var balanceAfter testsuite.QueryAllBalancesResponse
-			err = json.Unmarshal(res, &balanceAfter)
-			s.Require().NoError(err)
-
-			balanceChange := balanceAfter.Balances.AmountOf(s.OsmosisDenomInQuasar).Sub(balanceBefore.Balances.AmountOf(s.OsmosisDenomInQuasar)).Int64()
+			balanceChange := balanceAfter - balanceBefore
 			s.Require().True(int64(float64(tc.expectedBalanceChange)*(1-tc.expectedBalanceDeviation)) <= balanceChange)
 			s.Require().True(balanceChange <= int64(float64(tc.expectedBalanceChange)*(1+tc.expectedBalanceDeviation)))
 		default:

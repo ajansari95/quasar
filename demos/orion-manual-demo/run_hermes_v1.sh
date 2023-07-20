@@ -3,9 +3,6 @@
 cp ./hermes_config.toml ~/.hermes/config.toml
 
 hermes keys add --chain quasar --mnemonic-file keys/qsr.key
-
-hermes keys add --chain cosmos --mnemonic-file keys/gaia.key
-
 hermes keys add --chain osmosis --mnemonic-file keys/osmo.key
 
 
@@ -14,7 +11,6 @@ hermes keys add --chain osmosis --mnemonic-file keys/osmo.key
 
 ## Checking balance
 quasarnoded q bank balances quasar143wwmxhsd8nkwu7j8gzpv9ca503g8j55h059ew --node tcp://localhost:26659
-gaiad q bank balances cosmos1lrelhs37akgz2wht0y377uerxjm9fh33ke3ksc  --node tcp://localhost:26669
 osmosisd q bank balances osmo194580p9pyxakf3y3nqqk9hc3w9a7x0yrnv7wcz --node tcp://localhost:26679
 # bandd q bank balances band1cjx30d7n4k4pedgqkeqztz90q2l465gqrcymgf --node https://rpc.laozi-testnet5.bandchain.org:443
 

@@ -1,15 +1,16 @@
 #!/bin/sh
 
+pkill quasarnoded
+pkill osmosisd
+pkill rly
+pkill hermes
+
 # trap ctrl-c and ctrl-d
 cleanup() {
-    kill $COSMOS_PID
-    kill $OSMO_PID
-    kill $QUASAR_PID
-    kill $HERMES_PID
-    kill $RLY_PID_1
-    kill $RLY_PID_2
-    kill $RLY_PID_3
-
+  pkill quasarnoded
+  pkill osmosisd
+  pkill rly
+  pkill hermes
 }
 
 trap cleanup 1 2 3 6
@@ -34,9 +35,9 @@ OSMO_PID=$!
 sleep 10
 
 # create a pool on osmosis to test against
-osmosisd tx gamm create-pool --pool-file ./sample_pool1.json --node http://127.0.0.1:26679 --pool-type "stableswap" --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
+osmosisd tx gamm create-pool --pool-file ./sample_pool1.json --pool-type "stableswap" --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 sleep 6
-osmosisd tx gamm create-pool --pool-file ./sample_pool2.json --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
+osmosisd tx gamm create-pool --pool-file ./sample_pool2.json --pool-type "stableswap" --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 sleep 6
 osmosisd tx gamm create-pool --pool-file ./sample_pool3.json --node http://127.0.0.1:26679 --from bob --keyring-backend test --home $HOME/.osmosisd --chain-id osmosis -y --gas-prices 1uosmo
 
