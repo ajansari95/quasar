@@ -1,11 +1,5 @@
 import prompts from "prompts";
-import {
-  mayhem,
-  extreme_test,
-  seed_liquidity_from_alice,
-  simple_test,
-} from "./vault/src/driver";
-import { try_icq } from "./vault/src/vault";
+import {seed_liquidity_from_alice, simple_test_bond, simple_test_claim, simple_test_unbond} from "./vault/src/driver";
 
 async function main() {
   let response = await prompts({
@@ -15,24 +9,50 @@ async function main() {
   });
   console.log("vault addr:", response.vaultAddress);
 
-  //   setInterval(async () => {
-  //     try {
-  //       await Promise.all([
-  //         try_icq({
-  //           vaultAddress: response.vaultAddress,
-  //           from: 'alice',
-  //         }),
-  //       ])
-  //     } catch (e) {
-  //       //probably sequence issues
-  //     }
-  //   }, 13000)
+  // TODO put prompt here to ask if yes or not liquidity from alice, if yes do it otherwise not
+  let liquidityResponse = await prompts({
+    type: 'confirm',
+    name: 'seedLiquidity',
+    message: 'Do you want to seed liquidity from Alice?',
+  });
 
-  // await seed_liquidity_from_alice(response.vaultAddress)
+  if (liquidityResponse.seedLiquidity) {
+    await seed_liquidity_from_alice(response.vaultAddress);
+  }
 
-  await simple_test(response.vaultAddress);
-  //   await extreme_test(response.vaultAddress)
-  // await mayhem(response.vaultAddress)
+  // TODO put prompt here to just wait and ask if continue
+  let bondResponse = await prompts({
+    type: 'confirm',
+    name: 'continue',
+    message: 'Do you want to continue to test bond?',
+  });
+
+  if (bondResponse.continue) {
+    await simple_test_bond(response.vaultAddress);
+  }
+
+  // TODO put prompt here to just wait and ask if continue
+  let unbondResponse = await prompts({
+    type: 'confirm',
+    name: 'continue',
+    message: 'Do you want to continue to test unbond?',
+  });
+
+  if (unbondResponse.continue) {
+    await simple_test_unbond(response.vaultAddress);
+  }
+
+  // TODO put prompt here to just wait and ask if continue
+  let claimResponse = await prompts({
+    type: 'confirm',
+    name: 'continue',
+    message: 'Do you want to continue to test claim?',
+  });
+
+  if (claimResponse.continue) {
+    await simple_test_claim(response.vaultAddress);
+  }
 }
+
 
 main();

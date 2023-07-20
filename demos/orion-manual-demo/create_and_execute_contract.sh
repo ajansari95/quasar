@@ -3,12 +3,12 @@
 set -e
 
 on_error() {
-    echo "Some error occurred"
+  echo "Some error occurred"
 
-    quasarnoded q wasm contract-state smart $ADDR1 '{"trapped_errors":{}}'
+  quasarnoded q wasm contract-state smart $ADDR1 '{"trapped_errors":{}}'
 
-    afplay /System/Library/Sounds/Sosumi.aiff
-    say -r 10 you suck
+  afplay /System/Library/Sounds/Sosumi.aiff
+  say -r 10 you suck
 }
 
 trap 'on_error' ERR

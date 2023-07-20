@@ -67,7 +67,7 @@ export async function stupid_test(vaultAddress: string) {
   }, 5000);
 }
 
-export async function simple_test(vaultAddress: string) {
+export async function simple_test_bond(vaultAddress: string) {
   console.log("=== Starting Simple Bond Test ===");
 
   let bond_result = await bond({
@@ -80,51 +80,27 @@ export async function simple_test(vaultAddress: string) {
       },
     ],
   });
-  //   console.log('Bond result for alice:', JSON.stringify(bond_result, null, 2))
-
-  // let bond_result_2 = await bond({
-  //   from: 'bob',
-  //   vaultAddress,
-  //   funds: [
-  //     {
-  //       amount: '50',
-  //       denom: OSMO_DENOM,
-  //     },
-  //   ],
-  // })
-  //   console.log('Bond result for bob:', JSON.stringify(bond_result_2, null, 2))
 
   await expect_balance_increase(vaultAddress, true, false, false);
 
-  await try_icq({ vaultAddress, from: "bob" });
+  await try_icq({ vaultAddress, from: "alice" });
 
+  console.log("=== Simple Test Bond Complete ===");
+}
+export async function simple_test_unbond(vaultAddress: string) {
   console.log("\n=== Start Simple Start Unbond Test ===");
   let start_unbond_result = await start_unbond({
     from: "alice",
     vaultAddress,
     amount: "50",
   });
-  //   console.log(
-  //     'Start unbond result for alice:',
-  //     JSON.stringify(start_unbond_result, null, 2),
-  //   )
-  await try_icq({ vaultAddress, from: "bob" });
+  await try_icq({ vaultAddress, from: "alice" });
 
   await expect_unlock_time_passed(vaultAddress, true, false, false);
 
-  // let start_unbond_result_2 = await start_unbond({
-  //   from: "bob",
-  //   vaultAddress,
-  //   amount: "50",
-  // });
-  //   console.log(
-  //     'Start unbond result for bob:',
-  //     JSON.stringify(start_unbond_result_2, null, 2),
-  //   )
-
-  // await expect_unlock_time_passed(vaultAddress, false, true, false);
-  // await try_icq({ vaultAddress, from: "bob" });
-
+  console.log("=== Simple Test Unbond Complete ===");
+}
+export async function simple_test_claim(vaultAddress: string) {
   console.log("\n=== Start Simple Claim Test ===");
   await Promise.all([
     claim({ from: "alice", vaultAddress }),
@@ -133,7 +109,7 @@ export async function simple_test(vaultAddress: string) {
     expect_chain_balance_increase(true, false, false),
   ]);
 
-  console.log("=== Simple Test Complete ===");
+  console.log("=== Simple Test Claim Complete ===");
 }
 
 export async function extreme_test(vaultAddress: string) {
