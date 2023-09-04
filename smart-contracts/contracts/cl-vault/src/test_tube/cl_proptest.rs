@@ -1,6 +1,16 @@
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
+    use std::collections::HashMap;
+    use cosmwasm_std::Coin;
+    use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::MsgCreatePositionResponse;
+    use osmosis_test_tube::{Account, Module, Wasm};
+
+    use crate::{
+        msg::{ExecuteMsg, ExtensionQueryMsg, QueryMsg},
+        query::UserBalanceResponse,
+        test_tube::default_init,
+    };
 
     const ACCOUNTS_NUMBER: u64 = 10;
     const ACCOUNTS_INITIAL_BALANCE: u128 = 1_000_000_000_000;
