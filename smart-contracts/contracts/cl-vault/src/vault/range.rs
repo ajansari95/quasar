@@ -171,6 +171,8 @@ pub fn handle_withdraw_position_reply(
     }
 
     let pool_details = get_cl_pool_info(&deps.querier, pool_config.pool_id)?;
+    debug!(deps, "pool", pool_details);
+
 
     // if only one token is being deposited, and we are moving into a position where any amount of the other token is needed,
     // creating the position here will fail because liquidityNeeded is calculated as 0 on chain level
@@ -377,6 +379,7 @@ pub fn do_swap_deposit_merge(
 
     CURRENT_SWAP.save(deps.storage, &(swap_direction, left_over_amount))?;
 
+    // TODO use the modifyrange swap slippage here
     let token_out_min_amount = token_out_ideal_amount?.checked_multiply_ratio(
         vault_config.swap_max_slippage.numerator(),
         vault_config.swap_max_slippage.denominator(),
@@ -392,7 +395,7 @@ pub fn do_swap_deposit_merge(
     )?;
 
     Ok(Response::new()
-        .add_submessage(SubMsg::reply_always(swap_msg, Replies::Swap.into()))
+        .add_submessage(SubMsg::reply_on_success(swap_msg, Replies::Swap.into()))
         .add_attribute("action", "swap_deposit_merge")
         .add_attribute("method", "swap")
         .add_attribute("token_in", format!("{:?}{:?}", swap_amount, token_in_denom))
@@ -405,6 +408,7 @@ pub fn handle_swap_reply(
     env: Env,
     data: SubMsgResult,
 ) -> Result<Response, ContractError> {
+    debug!(deps, "swap result", data);
     // TODO: remove clone
     match data.clone() {
         SubMsgResult::Ok(_msg) => handle_swap_success(deps, env, data.try_into()?),
