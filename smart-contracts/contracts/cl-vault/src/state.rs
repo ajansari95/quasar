@@ -27,8 +27,6 @@ pub struct VaultConfig {
     pub performance_fee: Decimal,
     /// Account to receive fee payments
     pub treasury: Addr,
-    /// swap max slippage
-    pub swap_max_slippage: Decimal,
 }
 
 pub const VAULT_CONFIG: Item<VaultConfig> = Item::new("vault_config");

@@ -150,7 +150,6 @@ pub mod initialize {
             config: VaultConfig {
                 performance_fee: Decimal::percent(5),
                 treasury: Addr::unchecked(admin.address()),
-                swap_max_slippage: Decimal::percent(5),
             },
             vault_token_subdenom: "utestvault".to_string(),
             range_admin: admin.address(),

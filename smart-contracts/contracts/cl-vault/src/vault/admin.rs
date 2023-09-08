@@ -241,7 +241,6 @@ mod tests {
         let old_config = VaultConfig {
             treasury: Addr::unchecked("old_treasury"),
             performance_fee: Decimal::new(Uint128::from(100u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let mut deps = mock_dependencies();
         ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
@@ -252,7 +251,6 @@ mod tests {
         let new_config = VaultConfig {
             treasury: Addr::unchecked("new_treasury"),
             performance_fee: Decimal::new(Uint128::from(200u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let info_admin: MessageInfo = mock_info("admin", &[]);
 
@@ -269,7 +267,6 @@ mod tests {
         let old_config = VaultConfig {
             treasury: Addr::unchecked("old_treasury"),
             performance_fee: Decimal::new(Uint128::from(100u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let mut deps = mock_dependencies();
         ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
@@ -280,7 +277,6 @@ mod tests {
         let new_config = VaultConfig {
             treasury: Addr::unchecked("new_treasury"),
             performance_fee: Decimal::new(Uint128::from(200u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let info_not_admin = mock_info("not_admin", &[]);
 
@@ -297,7 +293,6 @@ mod tests {
         let old_config = VaultConfig {
             treasury: Addr::unchecked("old_treasury"),
             performance_fee: Decimal::new(Uint128::from(100u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let mut deps = mock_dependencies();
         ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
@@ -308,7 +303,6 @@ mod tests {
         let new_config = VaultConfig {
             treasury: Addr::unchecked("new_treasury"),
             performance_fee: Decimal::new(Uint128::from(200u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
 
         let info_admin_with_funds = mock_info("admin", &[coin(1, "token")]);
@@ -323,7 +317,6 @@ mod tests {
         let old_config = VaultConfig {
             treasury: Addr::unchecked("old_treasury"),
             performance_fee: Decimal::new(Uint128::from(100u128)),
-            swap_max_slippage: Decimal::from_ratio(1u128, 100u128),
         };
         let mut deps = mock_dependencies();
         ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();

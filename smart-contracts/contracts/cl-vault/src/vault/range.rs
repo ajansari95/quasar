@@ -287,7 +287,6 @@ pub fn do_swap_deposit_merge(
     debug!(deps, "oh no", "down bad");
 
     let pool_config = POOL_CONFIG.load(deps.storage)?;
-    let vault_config = VAULT_CONFIG.load(deps.storage)?;
 
     SWAP_DEPOSIT_MERGE_STATE.save(
         deps.storage,
@@ -378,11 +377,12 @@ pub fn do_swap_deposit_merge(
     };
 
     CURRENT_SWAP.save(deps.storage, &(swap_direction, left_over_amount))?;
-
+    // get the max slippage from the modifyrangestate
+    let max_slippage = MODIFY_RANGE_STATE.load(deps.storage)?.unwrap().max_slippage;
     // TODO use the modifyrange swap slippage here
     let token_out_min_amount = token_out_ideal_amount?.checked_multiply_ratio(
-        vault_config.swap_max_slippage.numerator(),
-        vault_config.swap_max_slippage.denominator(),
+        max_slippage.numerator(),
+        max_slippage.denominator(),
     )?;
 
     let swap_msg = swap(
@@ -639,7 +639,6 @@ mod tests {
                 &VaultConfig {
                     performance_fee: Decimal::zero(),
                     treasury: Addr::unchecked("treasure"),
-                    swap_max_slippage: Decimal::from_ratio(1u128, 20u128),
                 },
             )
             .unwrap();
