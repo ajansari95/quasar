@@ -388,7 +388,6 @@ pub fn handle_swap_reply(
     env: Env,
     data: SubMsgResult,
 ) -> Result<Response, ContractError> {
-    // TODO: Remove handling of data. if we keep reply_on_success in the caller function
     match data.clone() {
         SubMsgResult::Ok(_msg) => handle_swap_success(deps, env, data.try_into()?),
         SubMsgResult::Err(msg) => Err(ContractError::SwapFailed { message: msg }),
@@ -430,7 +429,7 @@ fn handle_swap_success(
     }
     if !balance1.is_zero() {
         coins_to_send.push(Coin {
-            denom: pool_config.token1.clone(),
+            denom: pool_config.token1,
             amount: balance1,
         });
     }
@@ -448,7 +447,7 @@ fn handle_swap_success(
     let pool_config = POOL_CONFIG.load(deps.storage)?;
 
     let pm_querier = PoolmanagerQuerier::new(&deps.querier);
-    let pool: Pool = pm_querier
+    let _pool: Pool = pm_querier
         .pool(pool_config.pool_id)?
         .pool
         .unwrap()

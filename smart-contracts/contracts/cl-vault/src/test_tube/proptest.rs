@@ -90,13 +90,13 @@ mod tests {
 
         // Execute deposit and get liquidity_created from emitted events
         let create_position = wasm
-        .execute(
-            contract_address.as_str(),
-            &ExecuteMsg::ExactDeposit { recipient: None }, // Nice to have: Make recipient random
-            &coins_to_deposit,
-            account,
-        )
-        .unwrap();
+            .execute(
+                contract_address.as_str(),
+                &ExecuteMsg::ExactDeposit { recipient: None }, // Nice to have: Make recipient random
+                &coins_to_deposit,
+                account,
+            )
+            .unwrap();
 
         // TODO: Get create_position data from response
         let create_position_response: MsgCreatePositionResponse = create_position.data.try_into().unwrap();
@@ -220,7 +220,7 @@ mod tests {
             address: account.address(),
             denom: denom.to_string(),
         })
-        .unwrap()
+            .unwrap()
     }
 
     fn get_user_shares_balance(
@@ -236,7 +236,7 @@ mod tests {
                 },
             )),
         )
-        .unwrap()
+            .unwrap()
     }
 
     fn get_position_assets(
