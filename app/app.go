@@ -3,7 +3,10 @@ package app
 import (
 	"fmt"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	feeabskeeper "github.com/osmosis-labs/fee-abstraction/v4/x/feeabs/keeper"
+	feeabstypes "github.com/osmosis-labs/fee-abstraction/v4/x/feeabs/types"
 
 	"io"
 	"net/http"
@@ -31,7 +34,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authrest "github.com/cosmos/cosmos-sdk/x/auth/client/rest"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
@@ -131,6 +133,7 @@ import (
 	qosmotypes "github.com/quasarlabs/quasarnode/x/qoracle/osmosis/types"
 	qoraclemoduletypes "github.com/quasarlabs/quasarnode/x/qoracle/types"
 
+	feeabsmodule "github.com/osmosis-labs/fee-abstraction/v4/x/feeabs"
 	qvestingmodule "github.com/quasarlabs/quasarnode/x/qvesting"
 	qvestingmodulekeeper "github.com/quasarlabs/quasarnode/x/qvesting/keeper"
 	qvestingmoduletypes "github.com/quasarlabs/quasarnode/x/qvesting/types"
@@ -138,6 +141,8 @@ import (
 	tfbindings "github.com/quasarlabs/quasarnode/x/tokenfactory/bindings"
 	tfkeeper "github.com/quasarlabs/quasarnode/x/tokenfactory/keeper"
 	tftypes "github.com/quasarlabs/quasarnode/x/tokenfactory/types"
+	//feeabskeeper "github.com/osmosis-labs/fee-abstraction/x/feeabs/keeper"
+	//feeabstypes "github.com/osmosis-labs/fee-abstraction/x/feeabs/types"
 	// this line is used by starport scaffolding # stargate/app/moduleImport
 )
 
@@ -245,6 +250,7 @@ var (
 
 		qvestingmodule.AppModuleBasic{},
 		authzmodule.AppModuleBasic{},
+		feeabsmodule.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -258,8 +264,9 @@ var (
 		ibctransfertypes.ModuleName:    {authtypes.Minter, authtypes.Burner},
 		icatypes.ModuleName:            nil,
 		// this line is used by starport scaffolding # stargate/app/maccPerms
-		wasm.ModuleName:    {authtypes.Burner},
-		tftypes.ModuleName: {authtypes.Minter, authtypes.Burner},
+		wasm.ModuleName:        {authtypes.Burner},
+		tftypes.ModuleName:     {authtypes.Minter, authtypes.Burner},
+		feeabstypes.ModuleName: nil,
 	}
 
 	Upgrades = []upgrades.Upgrade{v0.Upgrade}
@@ -357,6 +364,7 @@ func New(
 
 		qvestingmoduletypes.StoreKey, // TODO delete this if unused
 		authzkeeper.StoreKey,
+		feeabstypes.StoreKey,
 		// this line is used by starport scaffolding # stargate/app/storeKey
 	)
 	tkeys := sdk.NewTransientStoreKeys(
@@ -579,6 +587,23 @@ func New(
 		app.BankKeeper,
 	)
 
+	// Fee abstraction
+	scopedFeeabsKeeper := app.CapabilityKeeper.ScopeToModule(feeabstypes.ModuleName)
+	app.FeeabsKeeper = feeabskeeper.NewKeeper(
+		appCodec,
+		keys[feeabstypes.StoreKey],
+		app.GetSubspace(feeabstypes.ModuleName),
+		app.StakingKeeper,
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.TransferKeeper,
+		app.IBCKeeper.ChannelKeeper,
+		&app.IBCKeeper.PortKeeper,
+		scopedFeeabsKeeper,
+	)
+
+	feeabsModule := feeabsmodule.NewAppModule(appCodec, app.FeeabsKeeper)
+	feeabsIBCModule := feeabsmodule.NewIBCModule(appCodec, app.FeeabsKeeper)
 	// create the wasm callback plugin
 	// TODO_IMPORTANT - CALL BACK ACCOUNT
 
@@ -659,7 +684,8 @@ func New(
 		AddRoute(ibctransfertypes.ModuleName, app.TransferStack).
 		// AddRoute(ibctransfertypes.ModuleName, decoratedTransferIBCModule).
 		// AddRoute(intergammmoduletypes.ModuleName, icaControllerIBCModule).
-		AddRoute(qosmotypes.SubModuleName, qosmoIBCModule)
+		AddRoute(qosmotypes.SubModuleName, qosmoIBCModule).
+		AddRoute(feeabstypes.ModuleName, feeabsIBCModule)
 	//	AddRoute(qoraclemoduletypes.ModuleName, qoracleIBCModule)
 
 	/*
@@ -713,6 +739,7 @@ func New(
 
 		qvestingModule,
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
+		feeabsModule,
 		// this line is used by starport scaffolding # stargate/app/appModule
 	)
 
@@ -749,6 +776,7 @@ func New(
 
 		qvestingmoduletypes.ModuleName,
 		authztypes.ModuleName,
+		feeabstypes.ModuleName,
 	)
 
 	app.mm.SetOrderEndBlockers(crisistypes.ModuleName,
@@ -779,6 +807,7 @@ func New(
 
 		qvestingmoduletypes.ModuleName,
 		authztypes.ModuleName,
+		feeabstypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -818,6 +847,7 @@ func New(
 
 		qvestingmoduletypes.ModuleName,
 		authztypes.ModuleName,
+		feeabstypes.ModuleName,
 	)
 
 	app.mm.RegisterInvariants(&app.CrisisKeeper)
@@ -873,13 +903,29 @@ func New(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 
-	anteHandler, err := ante.NewAnteHandler(
-		ante.HandlerOptions{
-			AccountKeeper:   app.AccountKeeper,
-			BankKeeper:      app.BankKeeper,
-			SignModeHandler: encodingConfig.TxConfig.SignModeHandler(),
-			FeegrantKeeper:  app.FeeGrantKeeper,
-			SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+	/*
+		anteHandler, err := ante.NewAnteHandler(
+			ante.HandlerOptions{
+				AccountKeeper:   app.AccountKeeper,
+				BankKeeper:      app.BankKeeper,
+				SignModeHandler: encodingConfig.TxConfig.SignModeHandler(),
+				FeegrantKeeper:  app.FeeGrantKeeper,
+				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			},
+		)
+	*/
+
+	anteHandler, err := NewAnteHandler(
+		HandlerOptions{
+			HandlerOptions: ante.HandlerOptions{
+				AccountKeeper:   app.AccountKeeper,
+				BankKeeper:      app.BankKeeper,
+				FeegrantKeeper:  app.FeeGrantKeeper,
+				SignModeHandler: encodingConfig.TxConfig.SignModeHandler(),
+				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			},
+			IBCKeeper:    app.IBCKeeper,
+			FeeAbskeeper: app.FeeabsKeeper,
 		},
 	)
 	if err != nil {

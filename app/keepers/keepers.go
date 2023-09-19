@@ -21,6 +21,7 @@ import (
 	"github.com/cosmos/ibc-go/v4/modules/apps/transfer"
 	ibctransferkeeper "github.com/cosmos/ibc-go/v4/modules/apps/transfer/keeper"
 	ibckeeper "github.com/cosmos/ibc-go/v4/modules/core/keeper"
+	feeabskeeper "github.com/osmosis-labs/fee-abstraction/v4/x/feeabs/keeper"
 	epochsmodulekeeper "github.com/quasarlabs/quasarnode/x/epochs/keeper"
 	qoraclemodulekeeper "github.com/quasarlabs/quasarnode/x/qoracle/keeper"
 	qosmokeeper "github.com/quasarlabs/quasarnode/x/qoracle/osmosis/keeper"
@@ -75,6 +76,8 @@ type AppKeepers struct {
 	TransferStack             *qtransfer.IBCMiddleware
 	Ics20WasmHooks            *qtransfer.WasmHooks
 	HooksICS4Wrapper          qtransfer.ICS4Middleware
+
+	FeeabsKeeper feeabskeeper.Keeper
 
 	// this line is used by starport scaffolding # stargate/app/keeperDeclaration
 }
