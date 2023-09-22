@@ -1,14 +1,13 @@
 use core::panic;
 use std::{marker::PhantomData, str::FromStr};
 
-use cosmwasm_schema::serde::de;
 use cosmwasm_std::{
     coins, from_binary,
     testing::{mock_dependencies, mock_env, mock_info, MockApi, MockStorage},
     to_binary, Addr, Attribute, BankMsg, Binary, Coin, ContractInfoResponse, ContractResult,
     CosmosMsg, Decimal, DepsMut, Empty, Env, Fraction, MessageInfo, OwnedDeps, Querier,
-    QuerierResult, QuerierWrapper, QueryRequest, Reply, Response, StdError, StdResult,
-    SubMsgResponse, SubMsgResult, Timestamp, Uint128, WasmMsg,
+    QuerierResult, QueryRequest, Reply, Response, StdError, StdResult, SubMsgResponse,
+    SubMsgResult, Timestamp, Uint128, WasmMsg,
 };
 use cw20::BalanceResponse;
 
@@ -35,7 +34,6 @@ use crate::{
         get_token_amount_weights, may_pay_with_ratio,
     },
     msg::{ExecuteMsg, InstantiateMsg, InvestmentResponse, PrimitiveConfig, PrimitiveInitMsg},
-    query,
     state::{BONDING_SEQ, VAULT_REWARDS},
 };
 
@@ -2221,111 +2219,4 @@ fn test_claim_with_funds() {
     let msg = ExecuteMsg::Claim {};
     let res = execute(deps.as_mut(), env, info, msg);
     assert_eq!(res.unwrap_err(), PaymentError::NonPayable {}.into());
-}
-
-#[test]
-fn test_force_unbond() {
-    let mut deps = mock_deps_with_primitives(even_primitives_single_token());
-    let init_msg = init_msg_with_primitive_details(even_primitive_details_single_token());
-    let info = mock_info(TEST_CREATOR, &[]);
-    let env = mock_env();
-    let _ = init(deps.as_mut(), &init_msg, &env, &info);
-
-    let reply_msg = reply_msg();
-    let _ = reply(deps.as_mut(), env.clone(), reply_msg).unwrap();
-
-    // user deposits
-    let deposit_info = mock_info(TEST_DEPOSITOR, &even_deposit_single_token());
-    let deposit_msg = ExecuteMsg::Bond {
-        recipient: Option::None,
-    };
-    let _ = execute(deps.as_mut(), env.clone(), deposit_info, deposit_msg).unwrap();
-
-    // mock callbacks from primitives
-    let primitive_1_info = mock_info("quasar123", &[]);
-    let primitive_1_msg = ExecuteMsg::BondResponse(BondResponse {
-        share_amount: 100u128.into(),
-        bond_id: "1".to_string(),
-    });
-    let _ = execute(
-        deps.as_mut(),
-        env.clone(),
-        primitive_1_info,
-        primitive_1_msg,
-    )
-    .unwrap();
-
-    let primitive_2_info = mock_info("quasar124", &[]);
-    let primitive_2_msg = ExecuteMsg::BondResponse(BondResponse {
-        share_amount: 100u128.into(),
-        bond_id: "1".to_string(),
-    });
-    let _ = execute(
-        deps.as_mut(),
-        env.clone(),
-        primitive_2_info,
-        primitive_2_msg,
-    )
-    .unwrap();
-
-    let primitive_3_info = mock_info("quasar125", &[]);
-    let primitive_3_msg = ExecuteMsg::BondResponse(BondResponse {
-        share_amount: 100u128.into(),
-        bond_id: "1".to_string(),
-    });
-    let _ = execute(
-        deps.as_mut(),
-        env.clone(),
-        primitive_3_info,
-        primitive_3_msg,
-    )
-    .unwrap();
-
-    // check that the user has 300 - 3 shares
-    let balance_query = crate::msg::QueryMsg::Balance {
-        address: TEST_DEPOSITOR.to_string(),
-    };
-    let balance_res = query(deps.as_ref(), env.clone(), balance_query).unwrap();
-    let balance: BalanceResponse = from_binary(&balance_res).unwrap();
-    assert_eq!(balance.balance, Uint128::from(300 - 3u128));
-
-    // force unbond the user & some user that's not bounded
-    let contract_admin_info = mock_info("admin", &[]);
-    let force_unbond_msg = ExecuteMsg::ForceUnbond {
-        addresses: vec![TEST_DEPOSITOR.to_string(), "user_not_bonded".to_string()],
-    };
-
-    let force_unbond_res = execute(
-        deps.as_mut(),
-        env.clone(),
-        contract_admin_info,
-        force_unbond_msg,
-    )
-    .unwrap();
-
-    // only one message to each primitive should be sent (for depositor) + update vault rewards
-    assert_eq!(force_unbond_res.messages.len(), 3 + 1);
-
-    // check that only depositor started unbonding and that the amount of burnt shares is correct
-    assert_eq!(
-        force_unbond_res.attributes,
-        [
-            Attribute {
-                key: "action".to_string(),
-                value: "start_unbond".to_string(),
-            },
-            Attribute {
-                key: "from".to_string(),
-                value: "depositor".to_string(),
-            },
-            Attribute {
-                key: "burnt".to_string(),
-                value: "297".to_string(),
-            },
-            Attribute {
-                key: "bond_id".to_string(),
-                value: "2".to_string(),
-            },
-        ],
-    );
 }

@@ -1,9 +1,0 @@
-{
-  "error": {
-    "code": -32603,
-    "data": "failed to parse query: \nparse error near PegText (line 1 symbol 2 - line 1 symbol 11):\n\"malformed\"\n",
-    "message": "Internal error"
-  },
-  "id": "4059afce-0dc9-4f5c-94b5-092dce7778b2",
-  "jsonrpc": "2.0"
-}

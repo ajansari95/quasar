@@ -1,6 +1,0 @@
-{
-  "id": "17bdaf80-79c8-4b8a-9d90-b9ead6129bb1",
-  "jsonrpc": "2.0",
-  "method": "consensus_state",
-  "params": null
-}

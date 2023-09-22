@@ -143,9 +143,6 @@ pub enum ExecuteMsg {
         owner: String,
         amount: Uint128,
     },
-    ForceUnbond {
-        addresses: Vec<String>,
-    }
 }
 
 #[cw_serde]
