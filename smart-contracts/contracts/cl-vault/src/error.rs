@@ -59,6 +59,9 @@ pub enum ContractError {
     #[error("Overflow")]
     Overflow {},
 
+    #[error("Underflow")]
+    Underflow {},
+
     #[error("{0}")]
     OverflowError(#[from] OverflowError),
 

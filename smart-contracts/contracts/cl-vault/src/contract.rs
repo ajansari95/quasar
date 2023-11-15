@@ -188,21 +188,12 @@ pub fn migrate(deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, Co
         .range(deps.storage, None, None, cosmwasm_std::Order::Ascending)
         .map(|val| -> Result<(Addr, Uint128), ContractError> {
             let (user, shares) = val?;
-            // Convert Uint128 to Uint256 for old shares
-            let shares_256 = Uint256::from(shares.u128());
 
-            // Perform the division
-            let new_shares_256 = shares_256
-                .checked_div(Uint256::from_u128(10u128).pow(18))
-                .expect("Underflow");
+            // Calculate new shares using the calculate_new_shares function
+            let new_shares = calculate_new_shares(shares, vault_denom.clone())?;
 
-            // Convert back to Uint128 for new shares, handling potential overflow
-            let new_shares: Uint128 = Uint128::try_from(new_shares_256)
-                .expect("Conversion from Uint256 to Uint128 failed due to overflow");
-
-            let burn_amount_user = Uint128::try_from(
-                shares_256.checked_sub(Uint256::from(new_shares.u128()))?
-            ).expect("Overflow/Underflow in burn amount calculation for user");
+            // Calculate burn amount using the calculate_burn_amount function
+            let burn_amount_user = calculate_burn_amount(shares, new_shares.clone())?;
 
             // Create a burn message for each user
             let individual_burn = MsgBurn {
@@ -229,5 +220,56 @@ pub fn migrate(deps: DepsMut, env: Env, _msg: MigrateMsg) -> Result<Response, Co
     Ok(response)
 }
 
+fn calculate_new_shares(old_shares: Uint128, vault_denom: String) -> Result<Uint128, ContractError> {
+    // Convert Uint128 to Uint256 for old shares
+    let shares_256 = Uint256::from(old_shares.u128());
+
+    // Define 10^18 as a Uint256
+    let ten_to_18 = Uint256::from_u128(10u128).pow(18);
+
+    // Perform the division
+    let new_shares_256 = shares_256
+        .checked_div(ten_to_18)
+        .ok_or(ContractError::Underflow)?;
+
+    // Convert back to Uint128 for new shares, handling potential overflow
+    let new_shares = Uint128::try_from(new_shares_256)
+        .map_err(|_| ContractError::Overflow)?;
+
+    Ok(new_shares)
+}
+
+fn calculate_burn_amount(old_shares: Uint128, new_shares: Uint128) -> Result<Uint128, ContractError> {
+    // Ensure that old shares are greater than or equal to new shares
+    if old_shares < new_shares {
+        return Err(ContractError::IncorrectShares);
+    }
+    // Calculate the burn amount as the difference between old and new shares
+    let burn_amount = old_shares - new_shares;
+
+    Ok(burn_amount)
+}
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use cosmwasm_std::{Addr, ContractInfo, Env, Uint128};
+    use cosmwasm_std::testing::mock_dependencies;
+
+    #[test]
+    fn test_math_operations() {
+        // Create a test environment with dummy values
+
+
+        // Define some example values for testing
+        let shares = Uint128(1000000u128);
+        let vault_denom = "mycoin".to_string();
+
+        // Call the math operations
+        let new_shares = calculate_new_shares(shares, vault_denom.clone()).unwrap();
+        let burn_amount_user = calculate_burn_amount(shares, new_shares.clone()).unwrap();
+
+        // Assert the correctness of the results
+        assert_eq!(new_shares, Uint128(100000));
+        assert_eq!(burn_amount_user, Uint128(900000));
+    }
+}
