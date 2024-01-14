@@ -52,6 +52,43 @@ impl PoolConfig {
 
 pub const POOL_CONFIG: Item<PoolConfig> = Item::new("pool_config");
 
+/// This struct holds settings that determine when and how the contract should automatically adjust
+/// its liquidity position within a given range. These settings include thresholds for price bounds,
+/// idle funds, and parameters for the new positions to be created.
+#[cw_serde]
+pub struct AutomationConfig {
+    /// Indicates whether automation is enabled.
+    pub enabled: bool,
+
+    /// The lower bound threshold for the relative position ratio.
+    /// This represents the minimum acceptable ratio of the current price within the range.
+    /// If the relative position ratio falls below this threshold, it triggers a range adjustment.
+    pub lower_bound_threshold: Decimal256,
+
+    /// The upper bound threshold for the relative position ratio.
+    /// This represents the maximum acceptable ratio of the current price within the range.
+    /// If the relative position ratio exceeds this threshold, it triggers a range adjustment.
+    pub upper_bound_threshold: Decimal256,
+
+    /// The threshold for idle funds in the contract.
+    /// If the amount of idle funds falls below this threshold, it may trigger a range adjustment,
+    /// depending on other conditions. Idle funds typically refer to unutilized capital or liquidity within the contract.
+    pub idle_funds_threshold: Decimal,
+
+    /// The width of ticks for new positions.
+    /// This parameter defines the granularity of the price range for new liquidity positions.
+    /// A smaller value indicates a more granular (narrow) range, while a larger value indicates a less granular (wider) range.
+    pub ticks: u64,
+
+    /// The balance ratio between token0 and token1 in the liquidity position.
+    /// A value of 0.25, for example, means that 25% of the liquidity is allocated to token0, and 75% to token1.
+    /// This setting is used to define the asset distribution in the position.
+    pub balance: Decimal,
+}
+
+/// `AUTOMATION_CONFIG` contains configuration parameters for automated range adjustments in the contract.
+pub const AUTOMATION_CONFIG: Item<AutomationConfig> = Item::new("automation_config");
+
 /// POSITION
 #[cw_serde]
 pub struct Position {

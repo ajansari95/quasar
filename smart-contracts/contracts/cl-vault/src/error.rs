@@ -129,4 +129,13 @@ pub enum ContractError {
 
     #[error("Vault is not distributing rewards, claiming is needed first")]
     IsNotDistributing {},
+
+    #[error("Range automation is not enabled")]
+    AutomationDisabled {},
+
+    #[error("Range automation threshold not reachedd")]
+    AutomationThreshold {},
+
+    #[error("Invalid range width during automatic modify range")]
+    InvalidRangeWidth {},
 }

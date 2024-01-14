@@ -77,6 +77,11 @@ pub struct VerifyTickCacheResponse {
     pub result: Result<(), i64>,
 }
 
+#[cw_serde]
+pub struct AutomationResponse {
+    pub result: Result<(), i64>,
+}
+
 pub fn query_verify_tick_cache(deps: Deps) -> Result<VerifyTickCacheResponse, ContractError> {
     verify_tick_exp_cache(deps.storage)
         .err()

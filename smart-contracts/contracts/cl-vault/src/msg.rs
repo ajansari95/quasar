@@ -28,6 +28,12 @@ pub enum ExtensionExecuteMsg {
     ClaimRewards {},
     /// Build tick exponent cache
     BuildTickCache {},
+    /// Automation
+    Automation {
+        max_slippage: Decimal,
+        ratio_of_swappable_funds_to_use: Decimal,
+        twap_window_seconds: u64,
+    },
 }
 
 /// Apollo extension messages define functionality that is part of all apollo
