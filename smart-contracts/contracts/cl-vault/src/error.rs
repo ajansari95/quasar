@@ -138,4 +138,10 @@ pub enum ContractError {
 
     #[error("Invalid range width during automatic modify range")]
     InvalidRangeWidth {},
+
+    #[error("Error during calculation")]
+    CalculationError {},
+
+    #[error("Invalid automation config")]
+    IncorrectAutomationConfig {},
 }

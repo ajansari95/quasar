@@ -7,7 +7,7 @@ use crate::{
         AssetsBalanceResponse, PoolResponse, PositionResponse, RangeAdminResponse,
         UserRewardsResponse, UserSharesBalanceResponse, VerifyTickCacheResponse,
     },
-    state::VaultConfig,
+    state::{AutomationConfig, VaultConfig},
 };
 
 /// Extension execute messages for an apollo autocompounding vault
@@ -54,6 +54,11 @@ pub enum AdminExtensionExecuteMsg {
     UpdateConfig {
         /// The config updates.
         updates: VaultConfig,
+    },
+    /// Update the configuration for automation of range update.
+    UpdateAutomationConfig {
+        /// The config updates.
+        updates: AutomationConfig,
     },
     ClaimStrategistRewards {},
 }
@@ -135,6 +140,8 @@ pub struct InstantiateMsg {
     pub pool_id: u64,
     /// Configurable parameters for the contract.
     pub config: VaultConfig,
+    /// Configurable parameters for the contract automation.
+    pub automation_config: AutomationConfig,
     /// The subdenom that will be used for the native vault token, e.g.
     /// the denom of the vault token will be:
     /// "factory/{vault_contract}/{vault_token_subdenom}".

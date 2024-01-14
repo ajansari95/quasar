@@ -1,6 +1,8 @@
+use std::str::FromStr;
+
 use cosmwasm_std::{
-    coin, CosmosMsg, Decimal, DepsMut, Env, MessageInfo, Response, StdError, SubMsg, SubMsgResult,
-    Uint128,
+    coin, CosmosMsg, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, StdError, SubMsg,
+    SubMsgResult, Uint128,
 };
 use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
     MsgCreatePositionResponse, Pool,
@@ -16,9 +18,11 @@ use crate::msg::InstantiateMsg;
 use crate::reply::Replies;
 use crate::rewards::CoinList;
 use crate::state::{
-    Metadata, PoolConfig, Position, ADMIN_ADDRESS, DISTRIBUTED_REWARDS, IS_DISTRIBUTING, METADATA,
-    POOL_CONFIG, POSITION, RANGE_ADMIN, STRATEGIST_REWARDS, VAULT_CONFIG, VAULT_DENOM,
+    AutomationConfig, Metadata, PoolConfig, Position, ADMIN_ADDRESS, AUTOMATION_CONFIG,
+    DISTRIBUTED_REWARDS, IS_DISTRIBUTING, METADATA, POOL_CONFIG, POSITION, RANGE_ADMIN,
+    STRATEGIST_REWARDS, VAULT_CONFIG, VAULT_DENOM,
 };
+use crate::vault::automation::validate_automation_config;
 use crate::vault::concentrated_liquidity::create_position;
 use crate::ContractError;
 
@@ -49,12 +53,23 @@ pub fn handle_instantiate(
         .try_into()
         .unwrap();
 
-    POOL_CONFIG.save(
+    let pool_config = &PoolConfig {
+        pool_id: pool.id,
+        token0: pool.token0.clone(),
+        token1: pool.token1.clone(),
+    };
+    POOL_CONFIG.save(deps.storage, pool_config)?;
+
+    validate_automation_config(pool.tick_spacing, &msg.automation_config)?;
+    AUTOMATION_CONFIG.save(
         deps.storage,
-        &PoolConfig {
-            pool_id: pool.id,
-            token0: pool.token0.clone(),
-            token1: pool.token1.clone(),
+        &AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.05")?,
+            upper_bound_threshold: Decimal256::from_str("0.95")?,
+            idle_funds_threshold: Decimal::from_str("0.05")?,
+            ticks: 0 as u64,
+            balance: Decimal::from_str("0.5")?,
         },
     )?;
 

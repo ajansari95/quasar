@@ -211,7 +211,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
             lower_bound_threshold: Decimal256::from_str("0.05")?,
             upper_bound_threshold: Decimal256::from_str("0.95")?,
             idle_funds_threshold: Decimal::from_str("0.05")?,
-            ticks: 0 as u64,
+            ticks: 0 as u64, // TODO: change this
             balance: Decimal::from_str("0.5")?,
         },
     )?;

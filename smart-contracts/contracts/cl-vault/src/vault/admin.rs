@@ -1,11 +1,17 @@
+use super::automation::validate_automation_config;
 use crate::error::ContractResult;
 use crate::helpers::{assert_admin, sort_tokens};
 use crate::math::tick::build_tick_exp_cache;
 use crate::rewards::CoinList;
-use crate::state::{VaultConfig, ADMIN_ADDRESS, RANGE_ADMIN, STRATEGIST_REWARDS, VAULT_CONFIG};
+use crate::state::{
+    AutomationConfig, VaultConfig, ADMIN_ADDRESS, AUTOMATION_CONFIG, POOL_CONFIG, RANGE_ADMIN,
+    STRATEGIST_REWARDS, VAULT_CONFIG,
+};
 use crate::{msg::AdminExtensionExecuteMsg, ContractError};
 use cosmwasm_std::{BankMsg, DepsMut, MessageInfo, Response};
 use cw_utils::nonpayable;
+use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::Pool;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolmanagerQuerier;
 
 pub(crate) fn execute_admin(
     deps: DepsMut,
@@ -18,6 +24,9 @@ pub(crate) fn execute_admin(
         }
         AdminExtensionExecuteMsg::UpdateConfig { updates } => {
             execute_update_config(deps, info, updates)
+        }
+        AdminExtensionExecuteMsg::UpdateAutomationConfig { updates } => {
+            execute_update_automation_config(deps, info, updates)
         }
         AdminExtensionExecuteMsg::UpdateRangeAdmin { address } => {
             execute_update_range_admin(deps, info, address)
@@ -115,6 +124,36 @@ pub fn execute_update_config(
         .add_attribute("updates", format!("{:?}", updates)))
 }
 
+pub fn execute_update_automation_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    updates: AutomationConfig,
+) -> Result<Response, ContractError> {
+    nonpayable(&info).map_err(|_| ContractError::NonPayable {})?;
+    assert_admin(deps.as_ref(), &info.sender)?;
+
+    // Prepare queriers
+    let pmq = PoolmanagerQuerier::new(&deps.querier);
+
+    // Get pool config to query pool information for current_tick
+    let pool_config = POOL_CONFIG.load(deps.storage)?;
+    let pool: Pool = pmq
+        .pool(pool_config.pool_id)?
+        .pool
+        .ok_or(ContractError::PoolNotFound {
+            pool_id: pool_config.pool_id,
+        })?
+        .try_into()
+        .unwrap();
+
+    validate_automation_config(pool.tick_spacing, &updates)?;
+    AUTOMATION_CONFIG.save(deps.storage, &updates)?;
+
+    Ok(Response::default()
+        .add_attribute("action", "execute_update_automation_config")
+        .add_attribute("updates", format!("{:?}", updates)))
+}
+
 // Rebuild and verify the tick exponent cache
 pub fn execute_build_tick_exp_cache(
     deps: DepsMut,
@@ -130,12 +169,14 @@ pub fn execute_build_tick_exp_cache(
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use crate::math::tick::verify_tick_exp_cache;
     use cosmwasm_std::{
         coin,
         testing::{mock_dependencies, mock_info},
-        Addr, CosmosMsg, Decimal, Uint128,
+        Addr, CosmosMsg, Decimal, Decimal256, Uint128,
     };
 
     #[test]
@@ -434,6 +475,138 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(
             VAULT_CONFIG.load(deps.as_mut().storage).unwrap(),
+            old_config
+        );
+    }
+
+    #[test]
+    fn test_execute_update_config_automation_success() {
+        let admin = Addr::unchecked("admin");
+        let old_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.5").unwrap(),
+        };
+        let mut deps = mock_dependencies();
+        ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
+        AUTOMATION_CONFIG
+            .save(deps.as_mut().storage, &old_config)
+            .unwrap();
+
+        let new_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.1").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.9").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.1").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.25").unwrap(),
+        };
+        let info_admin: MessageInfo = mock_info("admin", &[]);
+
+        assert!(
+            execute_update_automation_config(deps.as_mut(), info_admin, new_config.clone()).is_ok()
+        );
+        assert_eq!(
+            AUTOMATION_CONFIG.load(deps.as_mut().storage).unwrap(),
+            new_config
+        );
+    }
+
+    #[test]
+    fn test_execute_update_config_automation_not_admin() {
+        let admin = Addr::unchecked("admin");
+        let old_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.5").unwrap(),
+        };
+        let mut deps = mock_dependencies();
+        ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
+        AUTOMATION_CONFIG
+            .save(deps.as_mut().storage, &old_config)
+            .unwrap();
+
+        let new_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.1").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.9").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.1").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.25").unwrap(),
+        };
+        let info_not_admin = mock_info("not_admin", &[]);
+
+        assert!(
+            execute_update_automation_config(deps.as_mut(), info_not_admin, new_config).is_err()
+        );
+        assert_eq!(
+            AUTOMATION_CONFIG.load(deps.as_mut().storage).unwrap(),
+            old_config
+        );
+    }
+
+    #[test]
+    fn test_execute_update_config_automation_with_funds() {
+        let admin = Addr::unchecked("admin");
+        let old_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.5").unwrap(),
+        };
+        let mut deps = mock_dependencies();
+        ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
+        AUTOMATION_CONFIG
+            .save(deps.as_mut().storage, &old_config)
+            .unwrap();
+
+        let new_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.1").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.9").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.1").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.25").unwrap(),
+        };
+
+        let info_admin_with_funds = mock_info("admin", &[coin(1, "token")]);
+
+        let result =
+            execute_update_automation_config(deps.as_mut(), info_admin_with_funds, new_config);
+        assert!(result.is_err(), "Expected Err, but got: {:?}", result);
+    }
+
+    #[test]
+    fn test_execute_update_config_automation_same_config() {
+        let admin = Addr::unchecked("admin");
+        let old_config = AutomationConfig {
+            enabled: false,
+            lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
+            upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
+            idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
+            ticks: 100 as u64,
+            balance: Decimal::from_str("0.5").unwrap(),
+        };
+        let mut deps = mock_dependencies();
+        ADMIN_ADDRESS.save(deps.as_mut().storage, &admin).unwrap();
+        AUTOMATION_CONFIG
+            .save(deps.as_mut().storage, &old_config)
+            .unwrap();
+
+        let info_admin: MessageInfo = mock_info("admin", &[]);
+
+        let res = execute_update_automation_config(deps.as_mut(), info_admin, old_config.clone());
+        assert!(res.is_ok());
+        assert_eq!(
+            AUTOMATION_CONFIG.load(deps.as_mut().storage).unwrap(),
             old_config
         );
     }

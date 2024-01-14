@@ -1,6 +1,10 @@
 use crate::helpers::get_unused_balances;
-use crate::math::tick::verify_tick_exp_cache;
+use crate::math::tick::{tick_to_price, verify_tick_exp_cache};
 use crate::rewards::CoinList;
+use crate::state::AUTOMATION_CONFIG;
+use crate::vault::automation::{
+    calculate_idle_funds, calculate_position_ratio, should_adjust_range,
+};
 use crate::vault::concentrated_liquidity::get_position;
 use crate::ContractError;
 use crate::{
@@ -14,6 +18,10 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{coin, Coin, Decimal, Deps, Env, Uint128};
 use cw_vault_multi_standard::VaultInfoResponse;
 use osmosis_std::types::cosmos::bank::v1beta1::BankQuerier;
+use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
+    ConcentratedliquidityQuerier, Pool,
+};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolmanagerQuerier;
 
 #[cw_serde]
 pub struct MetadataResponse {
@@ -79,7 +87,10 @@ pub struct VerifyTickCacheResponse {
 
 #[cw_serde]
 pub struct AutomationResponse {
-    pub result: Result<(), i64>,
+    pub relative_position: Decimal,
+    pub token0_idle_ratio: Decimal,
+    pub token1_idle_ratio: Decimal,
+    pub should_adjust_range: bool,
 }
 
 pub fn query_verify_tick_cache(deps: Deps) -> Result<VerifyTickCacheResponse, ContractError> {
@@ -226,4 +237,61 @@ pub fn query_total_vault_token_supply(deps: Deps) -> ContractResult<TotalVaultTo
         .parse::<u128>()?
         .into();
     Ok(TotalVaultTokenSupplyResponse { total })
+}
+
+pub fn query_automation(deps: Deps, env: Env) -> ContractResult<AutomationResponse> {
+    let automation_config = AUTOMATION_CONFIG.load(deps.storage)?;
+
+    // Prepare queriers
+    let pmq = PoolmanagerQuerier::new(&deps.querier);
+    let clq = ConcentratedliquidityQuerier::new(&deps.querier);
+
+    // Get pool config to query pool information for current_tick
+    let pool_config = POOL_CONFIG.load(deps.storage)?;
+    let pool: Pool = pmq
+        .pool(pool_config.pool_id)?
+        .pool
+        .ok_or(ContractError::PoolNotFound {
+            pool_id: pool_config.pool_id,
+        })?
+        .try_into()
+        .unwrap();
+
+    // Get position information
+    let position = POSITION.load(deps.storage)?;
+    let full_position_breakdown = clq.position_by_id(position.position_id)?.position.unwrap();
+
+    // Convert position's current ticks to prices
+    let current_price = tick_to_price(pool.current_tick)?;
+    let current_lower_price = tick_to_price(
+        full_position_breakdown
+            .position
+            .as_ref()
+            .unwrap()
+            .lower_tick,
+    )?;
+    let current_upper_price = tick_to_price(
+        full_position_breakdown
+            .position
+            .as_ref()
+            .unwrap()
+            .upper_tick,
+    )?;
+
+    // Calculate the distance ratio from lower and upper bounds
+    let relative_position =
+        calculate_position_ratio(current_price, current_lower_price, current_upper_price)?;
+
+    // TODO:
+    let total_assets = query_total_assets(deps, env)?;
+    let idle_funds = calculate_idle_funds(total_assets, full_position_breakdown)?;
+    let should_adjust_range =
+        should_adjust_range(relative_position, idle_funds, &automation_config)?;
+
+    Ok(AutomationResponse {
+        relative_position: relative_position.try_into().unwrap(),
+        token0_idle_ratio: idle_funds.0,
+        token1_idle_ratio: idle_funds.1,
+        should_adjust_range,
+    })
 }

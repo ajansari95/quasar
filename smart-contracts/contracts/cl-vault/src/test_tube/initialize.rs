@@ -2,7 +2,7 @@
 pub mod initialize {
     use std::str::FromStr;
 
-    use cosmwasm_std::{coin, Addr, Coin, Decimal, Uint128};
+    use cosmwasm_std::{coin, Addr, Coin, Decimal, Decimal256, Uint128};
     use cw_vault_multi_standard::VaultInfoResponse;
     use osmosis_std::types::cosmos::base::v1beta1;
     use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
@@ -26,7 +26,7 @@ pub mod initialize {
         ClQueryMsg, ExecuteMsg, ExtensionQueryMsg, InstantiateMsg, ModifyRangeMsg, QueryMsg,
     };
     use crate::query::PoolResponse;
-    use crate::state::VaultConfig;
+    use crate::state::{AutomationConfig, VaultConfig};
 
     const ADMIN_BALANCE_AMOUNT: u128 = 340282366920938463463374607431768211455u128;
     const TOKENS_PROVIDED_AMOUNT: &str = "1000000000000";
@@ -156,6 +156,14 @@ pub mod initialize {
                         performance_fee: Decimal::percent(20),
                         treasury: Addr::unchecked(admin.address()),
                         swap_max_slippage: Decimal::bps(5),
+                    },
+                    automation_config: AutomationConfig {
+                        enabled: false,
+                        lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
+                        upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
+                        idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
+                        ticks: 100 as u64,
+                        balance: Decimal::from_str("0.5").unwrap(),
                     },
                     vault_token_subdenom: "utestvault".to_string(),
                     range_admin: admin.address(),
