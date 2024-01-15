@@ -158,7 +158,7 @@ pub mod initialize {
                         swap_max_slippage: Decimal::bps(5),
                     },
                     automation_config: AutomationConfig {
-                        enabled: false,
+                        enabled: true,
                         lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
                         upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
                         idle_funds_threshold: Decimal::from_str("0.05").unwrap(),

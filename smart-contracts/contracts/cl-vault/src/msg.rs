@@ -87,6 +87,8 @@ pub struct MergePositionMsg {
 pub enum ExtensionQueryMsg {
     /// Metadata surrounding the vault
     Metadata {},
+    /// Automation status the vault
+    Automation {},
     /// Queries related to the lockup extension.
     Balances(UserBalanceQueryMsg),
     /// Queries related to Concentrated Liquidity

@@ -1,7 +1,5 @@
-use std::str::FromStr;
-
 use cosmwasm_std::{
-    coin, CosmosMsg, Decimal, Decimal256, DepsMut, Env, MessageInfo, Response, StdError, SubMsg,
+    coin, CosmosMsg, Decimal, DepsMut, Env, MessageInfo, Response, StdError, SubMsg,
     SubMsgResult, Uint128,
 };
 use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
@@ -18,7 +16,7 @@ use crate::msg::InstantiateMsg;
 use crate::reply::Replies;
 use crate::rewards::CoinList;
 use crate::state::{
-    AutomationConfig, Metadata, PoolConfig, Position, ADMIN_ADDRESS, AUTOMATION_CONFIG,
+    Metadata, PoolConfig, Position, ADMIN_ADDRESS, AUTOMATION_CONFIG,
     DISTRIBUTED_REWARDS, IS_DISTRIBUTING, METADATA, POOL_CONFIG, POSITION, RANGE_ADMIN,
     STRATEGIST_REWARDS, VAULT_CONFIG, VAULT_DENOM,
 };
@@ -63,14 +61,7 @@ pub fn handle_instantiate(
     validate_automation_config(pool.tick_spacing, &msg.automation_config)?;
     AUTOMATION_CONFIG.save(
         deps.storage,
-        &AutomationConfig {
-            enabled: false,
-            lower_bound_threshold: Decimal256::from_str("0.05")?,
-            upper_bound_threshold: Decimal256::from_str("0.95")?,
-            idle_funds_threshold: Decimal::from_str("0.05")?,
-            ticks: 0 as u64,
-            balance: Decimal::from_str("0.5")?,
-        },
+        &msg.automation_config,
     )?;
 
     IS_DISTRIBUTING.save(deps.storage, &false)?;
