@@ -162,7 +162,7 @@ pub mod initialize {
                         lower_bound_threshold: Decimal256::from_str("0.05").unwrap(),
                         upper_bound_threshold: Decimal256::from_str("0.95").unwrap(),
                         idle_funds_threshold: Decimal::from_str("0.05").unwrap(),
-                        ticks: 100 as u64,
+                        ticks: 1000 as u64,
                         balance: Decimal::from_str("0.5").unwrap(),
                     },
                     vault_token_subdenom: "utestvault".to_string(),

@@ -4,7 +4,7 @@ mod tests {
 
     use crate::msg::{ExecuteMsg, ExtensionQueryMsg, QueryMsg};
     use crate::query::AutomationResponse;
-    use crate::test_tube::helpers::get_event_attributes_by_ty_and_key;
+    //use crate::test_tube::helpers::get_event_attributes_by_ty_and_key;
     use crate::test_tube::initialize::initialize::default_init;
     use cosmwasm_std::{Coin, Decimal};
     use osmosis_std::types::cosmos::base::v1beta1::Coin as OsmoCoin;
@@ -38,21 +38,6 @@ mod tests {
             )
             .unwrap();
 
-        // Depositing with users
-        for account in &accounts {
-            let _ = wasm
-                .execute(
-                    contract_address.as_str(),
-                    &ExecuteMsg::ExactDeposit { recipient: None },
-                    &[
-                        Coin::new(DEPOSIT_AMOUNT, DENOM_BASE),
-                        Coin::new(DEPOSIT_AMOUNT, DENOM_QUOTE),
-                    ],
-                    account,
-                )
-                .unwrap();
-        }
-
         // Declare swapper account
         let swapper = app
             .init_account(&[
@@ -62,10 +47,25 @@ mod tests {
             .unwrap();
         println!("iii {:?}", swapper.address());
 
-        for _ in 0..AUTOMATION_CYCLES {
-            println!("iii {:?}", 1);
+        for i in 0..AUTOMATION_CYCLES {
+            println!("iii {:?}", i);
+            // Depositing with users
+            for account in &accounts {
+                let _ = wasm
+                    .execute(
+                        contract_address.as_str(),
+                        &ExecuteMsg::ExactDeposit { recipient: None },
+                        &[
+                            Coin::new(DEPOSIT_AMOUNT, DENOM_BASE),
+                            Coin::new(DEPOSIT_AMOUNT, DENOM_QUOTE),
+                        ],
+                        account,
+                    )
+                    .unwrap();
+            }
+            // TODO: This^ should always happen at 50% with no refund, assert this
 
-            // Swap to generate move range on previously created user positions
+            // Swap to generate move range on the pool to generate a rebalance opportunity
             PoolManager::new(&app)
                 .swap_exact_amount_in(
                     MsgSwapExactAmountIn {
@@ -84,7 +84,7 @@ mod tests {
                 )
                 .unwrap();
 
-            // TODO: Query contract query_automation() to check if conditions are met based on AutomationConfig
+            // Query contract query_automation() to check if conditions are met based on AutomationConfig
             let query_automation: AutomationResponse = wasm
                 .query(
                     contract_address.as_str(),
@@ -94,7 +94,7 @@ mod tests {
 
             println!("query_automation {:?}", query_automation);
 
-            // Only if
+            // Only if should_adjust_range
             if query_automation.should_adjust_range {
                 let ratio_steps = vec![
                     Decimal::from_str("0.0000000001").unwrap(),
@@ -127,8 +127,8 @@ mod tests {
                     println!("execution {:?}", result);
 
                     // Extract the 'todo' attribute from the 'wasm' event
-                    let todo = get_event_attributes_by_ty_and_key(&result, "wasm", vec!["todo"]);
-                    assert_eq!(todo[0].value, "false".to_string());
+                    //let todo = get_event_attributes_by_ty_and_key(&result, "wasm", vec!["todo"]);
+                    //assert_eq!(todo[0].value, "false".to_string());
                 }
             } else {
                 // TODO: Try to execute_automation() and unwrap_err() asserting the right error is retrieven

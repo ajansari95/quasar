@@ -26,7 +26,8 @@ pub fn execute_automation(
         return Err(ContractError::AutomationDisabled {});
     }
 
-    let (lower_price, upper_price) = get_new_prices(deps.as_ref(), env.clone(), &automation_config)?;
+    let (lower_price, upper_price) =
+        get_new_prices(deps.as_ref(), env.clone(), &automation_config)?;
 
     let result = execute_update_range(
         deps,
@@ -42,7 +43,11 @@ pub fn execute_automation(
     Ok(Response::new().add_attributes(result.attributes))
 }
 
-fn get_new_prices(deps: Deps, env: Env, automation_config: &AutomationConfig) -> Result<(Decimal, Decimal), ContractError> {
+fn get_new_prices(
+    deps: Deps,
+    env: Env,
+    automation_config: &AutomationConfig,
+) -> Result<(Decimal, Decimal), ContractError> {
     // Prepare queriers
     let pmq = PoolmanagerQuerier::new(&deps.querier);
     let clq = ConcentratedliquidityQuerier::new(&deps.querier);
@@ -78,24 +83,41 @@ fn get_new_prices(deps: Deps, env: Env, automation_config: &AutomationConfig) ->
             .unwrap()
             .upper_tick,
     )?;
+    deps.api
+        .debug(format!("current_price {:?}", current_price).as_str());
+    deps.api
+        .debug(format!("current_lower_price {:?}", current_lower_price).as_str());
+    deps.api
+        .debug(format!("current_upper_price {:?}", current_upper_price).as_str());
 
     // Calculate the distance ratio from lower and upper bounds
     let relative_position =
         calculate_position_ratio(current_price, current_lower_price, current_upper_price)?;
+    deps.api
+        .debug(format!("relative_position {:?}", relative_position).as_str());
 
     // Determine the amount of idle funds
     let total_assets: TotalAssetsResponse = query_total_assets(deps, env)?;
     let idle_funds: (Decimal, Decimal) =
         calculate_idle_funds(total_assets, full_position_breakdown)?;
+    deps.api
+        .debug(format!("idle_funds {:?}", idle_funds).as_str());
 
     // Decision logic for adjusting range
     if should_adjust_range(relative_position, idle_funds, &automation_config)? {
         // Calculate new lower and upper bounds
         let (new_lower_tick, new_upper_tick) =
             calculate_new_ticks(pool.current_tick, &automation_config)?;
+        deps.api
+            .debug(format!("new_lower_tick {:?}", new_lower_tick).as_str());
+        deps.api
+            .debug(format!("new_upper_tick {:?}", new_upper_tick).as_str());
         let new_lower_price = tick_to_price(new_lower_tick)?;
         let new_upper_price = tick_to_price(new_upper_tick)?;
-
+        deps.api
+            .debug(format!("new_lower_price {:?}", new_lower_price).as_str());
+        deps.api
+            .debug(format!("new_upper_price {:?}", new_upper_price).as_str());
         Ok((
             new_lower_price.try_into().unwrap(),
             new_upper_price.try_into().unwrap(),
@@ -234,30 +256,39 @@ pub fn should_adjust_range(
     Ok(is_outside_bounds || (are_idle_funds_above_threshold_0 || are_idle_funds_above_threshold_1))
 }
 
-/// Calculates new lower and upper tick positions based on the current tick and the configuration settings.
+/// Calculates new lower and upper tick positions based on the current tick, the ticks setting, and the balance in the automation configuration.
 ///
-/// This function determines new lower and upper tick positions for the contract's range. It uses the current market tick
-/// and adjusts it by half the `ticks` value defined in the `AutomationConfig`, creating a symmetric range around the current tick.
+/// This function adjusts the current market tick by a value derived from the `ticks` setting and the `balance` in the `AutomationConfig`.
+/// The balance influences the asymmetry of the range around the current tick.
 ///
 /// # Arguments
 ///
 /// * `current_tick` - The current tick index of the market.
-/// * `automation_config` - A reference to the `AutomationConfig` struct containing the tick settings.
+/// * `automation_config` - A reference to the `AutomationConfig` struct containing the tick and balance settings.
 ///
 /// # Returns
 ///
 /// Returns `Result<(i64, i64), ContractError>` where the tuple contains the new lower and upper tick positions.
-/// On failure, it returns a `ContractError`.
 pub fn calculate_new_ticks(
     current_tick: i64,
     automation_config: &AutomationConfig,
 ) -> Result<(i64, i64), ContractError> {
-    // Calculate half the ticks value from the automation configuration
-    let half_ticks = automation_config.ticks.checked_div(2).unwrap();
+    // Convert ticks to Decimal and calculate adjustment based on balance
+    let ticks_decimal = Decimal::from_str(&automation_config.ticks.to_string()).unwrap();
+    let balance_adjustment = automation_config
+        .balance
+        .checked_mul(ticks_decimal)
+        .unwrap();
+
+    // Convert balance_adjustment to Uint128 using to_uint_floor
+    let balance_ticks_uint = balance_adjustment.to_uint_floor();
+    let balance_ticks = balance_ticks_uint.u128() as i64;
 
     // Calculate new lower and upper tick positions
-    let new_lower_tick = current_tick.checked_sub(half_ticks as i64).unwrap();
-    let new_upper_tick = current_tick.checked_add(half_ticks as i64).unwrap();
+    let new_lower_tick = current_tick.checked_sub(balance_ticks).unwrap();
+    let new_upper_tick = current_tick
+        .checked_add(automation_config.ticks as i64 - balance_ticks)
+        .unwrap();
 
     Ok((new_lower_tick, new_upper_tick))
 }
