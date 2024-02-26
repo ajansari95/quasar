@@ -12,6 +12,7 @@ members = [
   "contracts/cl-vault",
   # "packages/intergamm-bindings",
   "packages/quasar-types",
+  "packages/arbitrary-signature-adr36",
 ]
 
 [workspace.dependencies]
