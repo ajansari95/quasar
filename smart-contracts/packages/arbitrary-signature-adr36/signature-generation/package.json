@@ -1,0 +1,22 @@
+{
+  "name": "signature-generation",
+  "version": "1.0.0",
+  "description": "generates signatures for a set mnemonic to compare to the rust signature verification",
+  "main": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "gen-sig": "ts-node index.ts"
+  },
+  "author": "laurens@quasar,fi",
+  "license": "ISC",
+  "dependencies": {
+    "@cosmjs/amino": "^0.32.2",
+    "@cosmjs/crypto": "^0.32.2",
+    "@cosmjs/encoding": "^0.32.2",
+    "@keplr-wallet/cosmos": "^0.12.22",
+    "@keplr-wallet/provider-mock": "0.12.70"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.20"
+  }
+}

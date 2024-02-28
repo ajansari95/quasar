@@ -20,7 +20,7 @@ where
     to_json_string(&SortAlphabetically(Adr36Message::new(
         signer,
         serde_json_wasm::to_string(&data)
-        .map_err(|err| StdError::serialize_err(std::any::type_name::<T>(), err.to_string()))?,
+            .map_err(|err| StdError::serialize_err(std::any::type_name::<T>(), err.to_string()))?,
     )))
 }
 
@@ -102,7 +102,40 @@ impl Value {
 
 #[cfg(test)]
 mod test {
+    use cosmwasm_std::{coin, testing::mock_dependencies, to_json_binary, Api, BankMsg, CosmosMsg};
+    use sha2::Sha256;
+    use sha2::Digest;
+    use base64::prelude::*;
+
+    use super::*;
 
     #[test]
-    fn verify_keplr_signature_works() {}
+    fn verify_keplr_signature_works() {
+        let keplr_msg = "eyJjaGFpbl9pZCI6IiIsImFjY291bnRfbnVtYmVyIjoiMCIsInNlcXVlbmNlIjoiMCIsImZlZSI6eyJnYXMiOiIwIiwiYW1vdW50IjpbXX0sIm1zZ3MiOlt7InR5cGUiOiJzaWduL01zZ1NpZ25EYXRhIiwidmFsdWUiOnsic2lnbmVyIjoie1wiYmFua1wiOntcInNlbmRcIjp7XCJ0b19hZGRyZXNzXCI6XCJvc21vMWNlMG56Zm01YTBqNXlnNDh4ejg4cXI0MzBjYWF4ZHJzd21rbW5uXCIsXCJhbW91bnRcIjpbe1wiZGVub21cIjpcInV0ZXN0XCIsXCJhbW91bnRcIjpcIjFcIn1dfX19IiwiZGF0YSI6ImIzTnRiekZqWlRCdWVtWnROV0V3YWpWNVp6UTRlSG80T0hGeU5ETXdZMkZoZUdSeWMzZHRhMjF1Ymc9PSJ9fV0sIm1lbW8iOiIifQ==";
+        let keplr_signature = BASE64_STANDARD.decode("eTjfqodFUdl/YCwVuEJjVxEf3wENFolexSW7ro94Xhkk1Udm6BHZ7GV63uPk2vlVKUdlyqA1AM6atu20n70Hgg==").unwrap();
+
+        let signer = "osmo1ce0nzfm5a0j5yg48xz88qr430caaxdrswmkmnn";
+        let public_key = base64::decode("Av2Jj5fqKoUfPKSJfY3B8F6APIHPAkSDwzzsOIWWeQtn").unwrap();
+
+        let bank_msg: CosmosMsg<BankMsg> = CosmosMsg::Bank(BankMsg::Send {
+            to_address: signer.to_string(),
+            amount: vec![coin(1, "utest")],
+        });
+
+        let adr_36_msg = create_adr36_json_binary(Addr::unchecked(signer), &to_json_binary(&bank_msg).unwrap()).unwrap();
+
+        let message_hash = compute_sha256_hash(adr_36_msg.as_ref());
+
+        let deps = mock_dependencies();
+
+        let verified = deps.api
+            .secp256k1_verify(message_hash.as_ref(), keplr_signature.as_ref(), public_key.as_ref()).unwrap();
+        assert!(verified, "unable to verify")
+    }
+
+    fn compute_sha256_hash(message: &[u8]) -> Vec<u8> {
+        let mut hasher = Sha256::new();
+        hasher.update(message);
+        hasher.finalize().to_vec()
+    }
 }

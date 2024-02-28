@@ -11,3 +11,7 @@ cosmwasm-schema = "1.1.5"
 serde-cw-value = "0.7.0"
 serde = "1.0.0"
 serde-json-wasm = "1.0.1"
+
+[dev-dependencies]
+base64 = { version = "0.21.7" }
+sha2 = { version = "0.10.7"}
