@@ -11,7 +11,7 @@ release/
 build/
 run/
 
-node_modules/
+**node_modules/
 vue/
 
 **/**/artifacts
